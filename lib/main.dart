@@ -303,7 +303,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
             borderRadius: BorderRadius.circular(14),
             boxShadow: [BoxShadow(color: cobalt.withOpacity(.22), blurRadius: 14, offset: const Offset(0, 6))],
           ),
-          child: const Icon(Icons.piano_rounded, color: Colors.white, size: 24),
+          child: const Icon(Icons.music_note_rounded, color: Colors.white, size: 24),
         ),
         const SizedBox(width: 11),
         const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
