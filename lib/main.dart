@@ -134,8 +134,16 @@ class _PianoHomePageState extends State<PianoHomePage> {
   void dispose() {
     _demoTimer?.cancel();
     _audioDisposed = true;
-    final activePlayers = _players.whereType<AudioPlayer>();
-    unawaited(Future.wait(activePlayers.map((player) => player.dispose())));
+    final cleanupTasks = <Future<void>>[];
+    for (var index = 0; index < _players.length; index++) {
+      final player = _players[index];
+      if (player == null) continue;
+      final queuedPlayback = _voiceQueues[index];
+      cleanupTasks.add(
+        queuedPlayback.catchError((_) {}).then((_) => player.dispose()),
+      );
+    }
+    unawaited(Future.wait(cleanupTasks));
     _toneCache.clear();
     super.dispose();
   }
