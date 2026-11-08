@@ -730,7 +730,6 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
   String feedback = 'Choose Listen or Practice to begin';
   bool demoPlaying = false;
   bool completionReported = false;
-  Timer? _releaseTimer;
   Timer? _demoTimer;
 
   bool get guided => lessonMode == 'practice';
@@ -738,7 +737,6 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
 
   @override
   void dispose() {
-    _releaseTimer?.cancel();
     _demoTimer?.cancel();
     super.dispose();
   }
