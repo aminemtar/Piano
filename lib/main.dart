@@ -159,7 +159,6 @@ class _PianoHomePageState extends State<PianoHomePage> {
       if (old != null) await old.dispose();
       final player = AudioPlayer();
       _players[midi] = player;
-      await player.setPlayerMode(PlayerMode.lowLatency);
       await player.play(BytesSource(_makeTone(midi)));
       player.onPlayerComplete.listen((_) {
         if (identical(_players[midi], player)) _players.remove(midi);
