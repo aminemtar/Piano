@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() => runApp(const PianoLearnApp());
@@ -263,6 +264,28 @@ class _PianoHomePageState extends State<PianoHomePage> {
     });
   }
 
+  Future<void> _openFullScreenPiano() async {
+    await SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => FullScreenPianoPage(
+        onKeyPressed: _pressKey,
+        songTitle: song.title,
+      ),
+    ));
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    await SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+  }
+
   void _selectSong(int index) {
     _demoTimer?.cancel();
     setState(() {
@@ -337,7 +360,12 @@ class _PianoHomePageState extends State<PianoHomePage> {
       const SizedBox(height: 20),
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         const Text('Your piano', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: navy)),
-        const Text('C4 – B5', style: TextStyle(color: Color(0xFF8994AA), fontSize: 11, fontWeight: FontWeight.w700)),
+        TextButton.icon(
+          onPressed: _openFullScreenPiano,
+          icon: const Icon(Icons.open_in_full_rounded, size: 15),
+          label: const Text('Full screen'),
+          style: TextButton.styleFrom(foregroundColor: cobalt, visualDensity: VisualDensity.compact),
+        ),
       ]),
       const SizedBox(height: 10),
       _pianoPanel(),
@@ -624,5 +652,165 @@ class _PianoHomePageState extends State<PianoHomePage> {
         Text(label, style: TextStyle(color: selected ? cobalt : const Color(0xFF9AA4B6), fontSize: 9, fontWeight: FontWeight.w800)),
       ]),
     ));
+  }
+}
+
+
+class FullScreenPianoPage extends StatefulWidget {
+  final ValueChanged<int> onKeyPressed;
+  final String songTitle;
+
+  const FullScreenPianoPage({
+    super.key,
+    required this.onKeyPressed,
+    required this.songTitle,
+  });
+
+  @override
+  State<FullScreenPianoPage> createState() => _FullScreenPianoPageState();
+}
+
+class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
+  int activeMidi = -1;
+  Timer? _releaseTimer;
+
+  @override
+  void dispose() {
+    _releaseTimer?.cancel();
+    super.dispose();
+  }
+
+  void _play(int midi) {
+    widget.onKeyPressed(midi);
+    setState(() => activeMidi = midi);
+    _releaseTimer?.cancel();
+    _releaseTimer = Timer(const Duration(milliseconds: 180), () {
+      if (mounted) setState(() => activeMidi = -1);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0B1530),
+      body: SafeArea(
+        child: LayoutBuilder(builder: (context, constraints) {
+          final compact = constraints.maxHeight < 360;
+          return Padding(
+            padding: EdgeInsets.fromLTRB(18, compact ? 5 : 12, 18, compact ? 7 : 14),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded, color: Colors.white),
+                      tooltip: 'Close piano',
+                    ),
+                    const SizedBox(width: 6),
+                    const Text('PIANO', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                    const SizedBox(width: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(color: Colors.white.withOpacity(.09), borderRadius: BorderRadius.circular(20)),
+                      child: Text(widget.songTitle, style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600)),
+                    ),
+                    const Spacer(),
+                    const Icon(Icons.touch_app_rounded, color: Color(0xFF8DA8FF), size: 17),
+                    const SizedBox(width: 6),
+                    const Text('PLAY ANY KEY', style: TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                  ],
+                ),
+                SizedBox(height: compact ? 4 : 12),
+                Expanded(
+                  child: Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.fromLTRB(10, compact ? 7 : 12, 10, compact ? 7 : 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF172544),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFF34476E)),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(.25), blurRadius: 24, offset: const Offset(0, 10))],
+                    ),
+                    child: LayoutBuilder(builder: (context, keyArea) {
+                      const whiteNotes = [60, 62, 64, 65, 67, 69, 71, 72, 74, 76, 77, 79, 81, 83];
+                      const blackOffsets = {61: 0, 63: 1, 66: 3, 68: 4, 70: 5, 73: 7, 75: 8, 78: 10, 80: 11, 82: 12};
+                      final whiteWidth = keyArea.maxWidth / whiteNotes.length;
+                      final blackHeight = keyArea.maxHeight * .59;
+                      return Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: whiteNotes.map((midi) {
+                              final selected = activeMidi == midi;
+                              return Expanded(
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTapDown: (_) => _play(midi),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 70),
+                                    margin: const EdgeInsets.symmetric(horizontal: 1),
+                                    decoration: BoxDecoration(
+                                      color: selected ? const Color(0xFF9DEBFF) : const Color(0xFFFAFBFF),
+                                      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
+                                      border: Border.all(color: const Color(0xFFD5DDED), width: .8),
+                                      boxShadow: selected ? [const BoxShadow(color: cyan, blurRadius: 13)] : null,
+                                    ),
+                                    alignment: Alignment.bottomCenter,
+                                    padding: EdgeInsets.only(bottom: compact ? 7 : 12),
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        Text(noteNames[midi % 12], style: TextStyle(fontSize: compact ? 9 : 12, fontWeight: FontWeight.w900, color: selected ? cobalt : const Color(0xFF53617D))),
+                                        Text(solfegeLabel(midi), style: TextStyle(fontSize: compact ? 7 : 9, color: const Color(0xFF8994AA))),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          ...blackOffsets.entries.map((entry) {
+                            final midi = entry.key;
+                            final selected = activeMidi == midi;
+                            return Positioned(
+                              left: (entry.value + 1) * whiteWidth - whiteWidth * .31,
+                              top: 0,
+                              width: whiteWidth * .62,
+                              height: blackHeight,
+                              child: GestureDetector(
+                                onTapDown: (_) => _play(midi),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 70),
+                                  decoration: BoxDecoration(
+                                    color: selected ? cobalt : const Color(0xFF101A31),
+                                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(7)),
+                                    border: Border.all(color: const Color(0xFF53617D), width: .8),
+                                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(.35), blurRadius: 6, offset: const Offset(0, 3))],
+                                  ),
+                                  alignment: Alignment.bottomCenter,
+                                  padding: EdgeInsets.only(bottom: compact ? 6 : 9),
+                                  child: Text(noteNames[midi % 12], style: TextStyle(color: Colors.white, fontSize: compact ? 7 : 9, fontWeight: FontWeight.w800)),
+                                ),
+                              ),
+                            );
+                          }),
+                        ],
+                      );
+                    }),
+                  ),
+                ),
+                SizedBox(height: compact ? 5 : 9),
+                Text(
+                  'C4 – B5   •   2 OCTAVES   •   Tap the keys to play',
+                  style: const TextStyle(color: Colors.white54, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: .5),
+                ),
+              ],
+            ),
+          );
+        }),
+      ),
+    );
   }
 }
