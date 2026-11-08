@@ -282,8 +282,10 @@ class _PianoHomePageState extends State<PianoHomePage> {
     var i = 0;
     final interval = Duration(milliseconds: (60000 / song.bpm).round());
     Future<void> tick() async {
-      if (!mounted || mode != 'watch' || !isPlayingDemo || i >= song.notes.length) {
-        if (mounted) setState(() {
+      if (!mounted) return;
+      if (mode != 'watch' || !isPlayingDemo) return;
+      if (i >= song.notes.length) {
+        setState(() {
           isPlayingDemo = false;
           activeMidi = -1;
           feedback = 'Your turn — play the melody yourself';
@@ -304,9 +306,9 @@ class _PianoHomePageState extends State<PianoHomePage> {
   void _startPractice({bool challenge = false}) {
     _demoTimer?.cancel();
     _hintTimer?.cancel();
-    _hintTimer?.cancel();
     setState(() {
       mode = challenge ? 'challenge' : 'practice';
+      isPlayingDemo = false;
       targetIndex = 0;
       feedback = challenge ? 'Play the song from memory. You can do it!' : 'Follow the notes. The first note is ${noteLabel(song.notes.first)}';
     });
