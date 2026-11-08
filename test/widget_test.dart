@@ -18,4 +18,22 @@ void main() {
     expect(find.text('Do'), findsWidgets);
     expect(find.text('Practice'), findsOneWidget);
   });
+  test('song catalog stays inside the two-octave keyboard', () {
+    expect(songs, hasLength(12));
+    for (final song in songs) {
+      expect(song.notes, isNotEmpty, reason: song.title);
+      expect(song.bpm, greaterThan(0), reason: song.title);
+      expect(
+        song.notes.every((midi) => midi >= 60 && midi <= 83),
+        isTrue,
+        reason: '${song.title} contains a note outside C4–B5',
+      );
+    }
+  });
+
+  test('keyboard note labels include both octave boundaries', () {
+    expect(noteLabel(60), 'C4');
+    expect(noteLabel(83), 'B5');
+  });
+
 }
