@@ -16,6 +16,13 @@ void main() {
     expect(find.text('piano.'), findsOneWidget);
     expect(find.text('Your piano'), findsOneWidget);
     expect(find.text('Do'), findsWidgets);
+
+    await tester.scrollUntilVisible(
+      find.text('Practice'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Practice'), findsOneWidget);
   });
   test('song catalog stays inside the two-octave keyboard', () {
