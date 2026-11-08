@@ -101,7 +101,14 @@ class _PianoHomePageState extends State<PianoHomePage> {
   String mode = 'idle';
   bool isPlayingDemo = false;
   String feedback = 'Choose a song and start learning';
-  final Map<int, AudioPlayer> _players = {};
+  static const int _audioVoiceCount = 6;
+  final List<AudioPlayer?> _players =
+      List<AudioPlayer?>.filled(_audioVoiceCount, null);
+  final List<Future<void>> _voiceQueues =
+      List<Future<void>>.filled(_audioVoiceCount, Future<void>.value());
+  final Map<int, Uint8List> _toneCache = {};
+  int _nextVoice = 0;
+  bool _audioDisposed = false;
   Timer? _demoTimer;
   SharedPreferences? _prefs;
 
@@ -126,9 +133,10 @@ class _PianoHomePageState extends State<PianoHomePage> {
   @override
   void dispose() {
     _demoTimer?.cancel();
-    for (final player in _players.values) {
-      player.dispose();
-    }
+    _audioDisposed = true;
+    final activePlayers = _players.whereType<AudioPlayer>();
+    unawaited(Future.wait(activePlayers.map((player) => player.dispose())));
+    _toneCache.clear();
     super.dispose();
   }
 
@@ -170,18 +178,30 @@ class _PianoHomePageState extends State<PianoHomePage> {
   }
 
   Future<void> _playNote(int midi) async {
+    if (_audioDisposed) return;
+
+    // Reuse a small, bounded set of voices instead of allocating an AudioPlayer
+    // for every key press. Cache generated PCM/WAV data for repeat notes.
+    final voiceIndex = _nextVoice;
+    _nextVoice = (_nextVoice + 1) % _audioVoiceCount;
+    final player = _players[voiceIndex] ??= AudioPlayer();
+    final tone = _toneCache.putIfAbsent(midi, () => _makeTone(midi));
+
+    final previousTask = _voiceQueues[voiceIndex];
+    final playbackTask = previousTask.catchError((_) {}).then((_) async {
+      if (_audioDisposed) return;
+      await player.stop();
+      if (_audioDisposed) return;
+      await player.play(BytesSource(tone));
+    });
+    _voiceQueues[voiceIndex] = playbackTask;
+
     try {
-      final old = _players.remove(midi);
-      if (old != null) await old.dispose();
-      final player = AudioPlayer();
-      _players[midi] = player;
-      await player.play(BytesSource(_makeTone(midi)));
-      player.onPlayerComplete.listen((_) {
-        if (identical(_players[midi], player)) _players.remove(midi);
-        player.dispose();
-      });
+      await playbackTask;
     } catch (_) {
-      if (mounted) setState(() => feedback = 'Audio could not start. Please try again.');
+      if (mounted && !_audioDisposed) {
+        setState(() => feedback = 'Audio could not start. Please try again.');
+      }
     }
   }
 
@@ -198,8 +218,10 @@ class _PianoHomePageState extends State<PianoHomePage> {
 
   void _releaseKey(int midi) {
     if (!mounted) return;
-    setState(() => pressedKeys.remove(midi));
-    if (activeMidi == midi) setState(() => activeMidi = -1);
+    setState(() {
+      pressedKeys.remove(midi);
+      activeMidi = pressedKeys.isEmpty ? -1 : pressedKeys.last;
+    });
   }
 
   void _checkAnswer(int midi) {
@@ -279,9 +301,12 @@ class _PianoHomePageState extends State<PianoHomePage> {
   }
 
   void _resetPractice() {
+    _demoTimer?.cancel();
     setState(() {
       targetIndex = 0;
       mode = 'ready';
+      isPlayingDemo = false;
+      activeMidi = pressedKeys.isEmpty ? -1 : pressedKeys.last;
       feedback = 'Ready to try again?';
     });
   }
@@ -769,7 +794,7 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
     if (!mounted) return;
     setState(() {
       pressedKeys.remove(midi);
-      if (activeMidi == midi) activeMidi = -1;
+      activeMidi = pressedKeys.isEmpty ? -1 : pressedKeys.last;
     });
   }
 
