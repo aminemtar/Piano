@@ -414,7 +414,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
       final whiteWidth = constraints.maxWidth / whiteMidis.length;
       return Stack(clipBehavior: Clip.none, children: [
         Row(children: whiteMidis.map((midi) {
-          final isActive = activeMidi == midi;
+          final isActive = activeMidi == midi || (mode == 'practice' && targetIndex < song.notes.length && song.notes[targetIndex] == midi);
           return Expanded(child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTapDown: (_) => _pressKey(midi),
