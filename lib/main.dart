@@ -264,14 +264,6 @@ class _PianoHomePageState extends State<PianoHomePage> {
     await tick();
   }
 
-  void _releaseKey(int midi) {
-    if (!mounted) return;
-    setState(() {
-      pressedKeys.remove(midi);
-      if (activeMidi == midi) activeMidi = -1;
-    });
-  }
-
   void _startPractice({bool challenge = false}) {
     _demoTimer?.cancel();
     setState(() {
@@ -771,6 +763,14 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
         });
       }
     }
+  }
+
+  void _releaseKey(int midi) {
+    if (!mounted) return;
+    setState(() {
+      pressedKeys.remove(midi);
+      if (activeMidi == midi) activeMidi = -1;
+    });
   }
 
   void _startPractice({bool challenge = false}) {
