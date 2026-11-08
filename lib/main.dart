@@ -439,7 +439,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
         ...blackOffsets.entries.map((entry) {
           final midi = entry.key;
           final left = (entry.value + 1) * whiteWidth - whiteWidth * .31;
-          final isActive = activeMidi == midi;
+          final isActive = activeMidi == midi || (mode == 'practice' && targetIndex < song.notes.length && song.notes[targetIndex] == midi);
           return Positioned(
             left: left, top: 0, width: whiteWidth * .62, height: 91,
             child: GestureDetector(
