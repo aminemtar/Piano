@@ -145,7 +145,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
         queuedPlayback.catchError((_) {}).then((_) => player.dispose()),
       );
     }
-    unawaited(Future.wait(cleanupTasks).catchError((_) {}));
+    unawaited(Future.wait(cleanupTasks).then<void>((_) {}, onError: (Object error, StackTrace stackTrace) {}));
     _toneCache.clear();
     super.dispose();
   }
@@ -243,7 +243,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
         xp += 5;
         feedback = targetIndex == song.notes.length
             ? 'Beautiful! You played the whole melody.'
-            : 'Correct! ${targetIndex} of ${song.notes.length} notes';
+            : 'Correct! $targetIndex of ${song.notes.length} notes';
       });
       _prefs?.setInt('xp', xp);
       if (targetIndex == song.notes.length) _finishSong();
@@ -402,7 +402,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
           decoration: BoxDecoration(
             gradient: const LinearGradient(colors: [cobalt, Color(0xFF6E8BFF)]),
             borderRadius: BorderRadius.circular(14),
-            boxShadow: [BoxShadow(color: cobalt.withOpacity(.22), blurRadius: 14, offset: const Offset(0, 6))],
+            boxShadow: [BoxShadow(color: cobalt.withValues(alpha: .22), blurRadius: 14, offset: const Offset(0, 6))],
           ),
           child: const Icon(Icons.music_note_rounded, color: Colors.white, size: 24),
         ),
@@ -461,16 +461,16 @@ class _PianoHomePageState extends State<PianoHomePage> {
     decoration: BoxDecoration(
       gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF203C9C), Color(0xFF315BFF), Color(0xFF4B9BFF)]),
       borderRadius: BorderRadius.circular(24),
-      boxShadow: [BoxShadow(color: cobalt.withOpacity(.22), blurRadius: 24, offset: const Offset(0, 12))],
+      boxShadow: [BoxShadow(color: cobalt.withValues(alpha: .22), blurRadius: 24, offset: const Offset(0, 12))],
     ),
     child: Stack(children: [
-      Positioned(right: -12, top: -15, child: Icon(Icons.music_note_rounded, size: 112, color: Colors.white.withOpacity(.10))),
+      Positioned(right: -12, top: -15, child: Icon(Icons.music_note_rounded, size: 112, color: Colors.white.withValues(alpha: .10))),
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: Colors.white.withOpacity(.16), borderRadius: BorderRadius.circular(20)), child: const Text('LESSON OF THE DAY', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.2))),
+        Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: Colors.white.withValues(alpha: .16), borderRadius: BorderRadius.circular(20)), child: const Text('LESSON OF THE DAY', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.2))),
         const SizedBox(height: 13),
         const Text('Every song starts\nwith one note.', style: TextStyle(color: Colors.white, fontSize: 25, height: 1.12, fontWeight: FontWeight.w900, letterSpacing: -.6)),
         const SizedBox(height: 8),
-        Text('Listen. Practice. Play it by yourself.', style: TextStyle(color: Colors.white.withOpacity(.82), fontSize: 12)),
+        Text('Listen. Practice. Play it by yourself.', style: TextStyle(color: Colors.white.withValues(alpha: .82), fontSize: 12)),
         const SizedBox(height: 17),
         GestureDetector(
           onTap: () => _playDemo(),
@@ -499,12 +499,12 @@ class _PianoHomePageState extends State<PianoHomePage> {
 
   Widget _pianoPanel() => Container(
     padding: const EdgeInsets.fromLTRB(10, 13, 10, 10),
-    decoration: BoxDecoration(color: navy, borderRadius: BorderRadius.circular(21), boxShadow: [BoxShadow(color: navy.withOpacity(.16), blurRadius: 20, offset: const Offset(0, 9))]),
+    decoration: BoxDecoration(color: navy, borderRadius: BorderRadius.circular(21), boxShadow: [BoxShadow(color: navy.withValues(alpha: .16), blurRadius: 20, offset: const Offset(0, 9))]),
     child: Column(children: [
       Row(children: [
         const Text('PLAY THE KEYS', style: TextStyle(color: Colors.white70, fontSize: 9, letterSpacing: 1.3, fontWeight: FontWeight.w900)),
         const Spacer(),
-        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.white.withOpacity(.10), borderRadius: BorderRadius.circular(8)), child: const Text('2 OCTAVES', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w800))),
+        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.white.withValues(alpha: .10), borderRadius: BorderRadius.circular(8)), child: const Text('2 OCTAVES', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w800))),
       ]),
       const SizedBox(height: 12),
       SizedBox(height: 156, child: _keyboard()),
@@ -566,7 +566,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
                   color: isActive ? cobalt : const Color(0xFF26334F),
                   borderRadius: const BorderRadius.vertical(bottom: Radius.circular(6)),
                   border: Border.all(color: const Color(0xFF53617D), width: .7),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(.24), blurRadius: 5, offset: const Offset(0, 3))],
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .24), blurRadius: 5, offset: const Offset(0, 3))],
                 ),
                 alignment: Alignment.bottomCenter,
                 padding: const EdgeInsets.only(bottom: 7),
@@ -713,7 +713,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
     padding: const EdgeInsets.all(17),
     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(17), border: Border.all(color: const Color(0xFFE8EDF7))),
     child: Row(children: [
-      Container(width: 39, height: 39, decoration: BoxDecoration(color: color.withOpacity(.12), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: color)),
+      Container(width: 39, height: 39, decoration: BoxDecoration(color: color.withValues(alpha: .12), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: color)),
       const SizedBox(width: 10),
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(value, style: const TextStyle(color: navy, fontSize: 19, fontWeight: FontWeight.w900)),
@@ -794,7 +794,9 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
       widget.onEarnXp();
       setState(() {
         targetIndex++;
-        feedback = finished ? 'Excellent! You completed the whole song.' : 'Correct! Next: ' + noteLabel(widget.notes[targetIndex]) + ' (' + solfegeLabel(widget.notes[targetIndex]) + ').';
+        feedback = finished
+            ? 'Excellent! You completed the whole song.'
+            : 'Correct! Next: ${noteLabel(widget.notes[targetIndex])} (${solfegeLabel(widget.notes[targetIndex])}).';
         if (finished) {
           lessonMode = 'complete';
           if (!completionReported) {
@@ -804,7 +806,7 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
         }
       });
     } else {
-      setState(() => feedback = 'Try ' + noteLabel(expected) + ' (' + solfegeLabel(expected) + ').');
+      setState(() => feedback = 'Try ${noteLabel(expected)} (${solfegeLabel(expected)}).');
       if (guided) {
         _hintTimer?.cancel();
         _hintTimer = Timer(const Duration(milliseconds: 350), () {
@@ -829,7 +831,9 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
       completionReported = false;
       lessonMode = challenge ? 'challenge' : 'practice';
       demoPlaying = false;
-      feedback = challenge ? 'Play from memory. Keys will not be highlighted.' : 'Follow the glowing key: ' + noteLabel(widget.notes.first) + ' (' + solfegeLabel(widget.notes.first) + ').';
+      feedback = challenge
+          ? 'Play from memory. Keys will not be highlighted.'
+          : 'Follow the glowing key: ${noteLabel(widget.notes.first)} (${solfegeLabel(widget.notes.first)}).';
       activeMidi = -1;
     });
     if (!challenge) {
@@ -900,7 +904,7 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
                 if (expected != null && guided) Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(color: cobalt, borderRadius: BorderRadius.circular(10)),
-                  child: Text('NEXT: ' + noteLabel(expected), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900)),
+                  child: Text('NEXT: ${noteLabel(expected)}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900)),
                 ),
               ]),
               SizedBox(height: compact ? 2 : 5),
@@ -917,7 +921,7 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
               Row(children: [
                 Expanded(child: Text(feedback, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600))),
                 const SizedBox(width: 10),
-                Text(targetIndex.toString() + '/' + widget.notes.length.toString(), style: const TextStyle(color: Color(0xFF9FB5FF), fontSize: 10, fontWeight: FontWeight.w900)),
+                Text('$targetIndex/${widget.notes.length}', style: const TextStyle(color: Color(0xFF9FB5FF), fontSize: 10, fontWeight: FontWeight.w900)),
               ]),
               const SizedBox(height: 5),
               _noteRoadmap(compact),
@@ -927,7 +931,7 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
               Expanded(child: Container(
                 width: double.infinity,
                 padding: EdgeInsets.fromLTRB(8, compact ? 6 : 10, 8, compact ? 6 : 10),
-                decoration: BoxDecoration(color: const Color(0xFF172544), borderRadius: BorderRadius.circular(17), border: Border.all(color: const Color(0xFF34476E)), boxShadow: [BoxShadow(color: Colors.black.withOpacity(.25), blurRadius: 24, offset: const Offset(0, 10))]),
+                decoration: BoxDecoration(color: const Color(0xFF172544), borderRadius: BorderRadius.circular(17), border: Border.all(color: const Color(0xFF34476E)), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .25), blurRadius: 24, offset: const Offset(0, 10))]),
                 child: LayoutBuilder(builder: (context, keyArea) {
                   const whiteNotes = [60, 62, 64, 65, 67, 69, 71, 72, 74, 76, 77, 79, 81, 83];
                   const blackOffsets = {61: 0, 63: 1, 66: 3, 68: 4, 70: 5, 73: 7, 75: 8, 78: 10, 80: 11, 82: 12};
@@ -983,7 +987,7 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
                               color: selected ? cobalt : target ? const Color(0xFF315BFF) : const Color(0xFF101A31),
                               borderRadius: const BorderRadius.vertical(bottom: Radius.circular(7)),
                               border: Border.all(color: target ? cyan : const Color(0xFF53617D), width: target ? 2 : .8),
-                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(.35), blurRadius: 6, offset: const Offset(0, 3))],
+                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .35), blurRadius: 6, offset: const Offset(0, 3))],
                             ),
                             alignment: Alignment.bottomCenter,
                             padding: EdgeInsets.only(bottom: compact ? 5 : 8),
