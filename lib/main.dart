@@ -111,6 +111,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
   bool _audioDisposed = false;
   Timer? _demoTimer;
   Timer? _hintTimer;
+  Timer? _progressSaveTimer;
   SharedPreferences? _prefs;
 
   Song get song => songs[songIndex];
@@ -131,10 +132,31 @@ class _PianoHomePageState extends State<PianoHomePage> {
     });
   }
 
+  void _scheduleProgressSave() {
+    _progressSaveTimer?.cancel();
+    _progressSaveTimer = Timer(const Duration(milliseconds: 450), () {
+      unawaited(_persistProgress());
+    });
+  }
+
+  Future<void> _persistProgress() async {
+    _progressSaveTimer?.cancel();
+    final prefs = _prefs;
+    if (prefs == null) return;
+    try {
+      await prefs.setInt('xp', xp);
+      await prefs.setInt('completed', completedSongs);
+    } catch (_) {
+      // Keep the in-memory progress even if local storage is temporarily unavailable.
+    }
+  }
+
   @override
   void dispose() {
     _demoTimer?.cancel();
     _hintTimer?.cancel();
+    _progressSaveTimer?.cancel();
+    unawaited(_persistProgress());
     _audioDisposed = true;
     final cleanupTasks = <Future<void>>[];
     for (var index = 0; index < _players.length; index++) {
@@ -245,7 +267,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
             ? 'Beautiful! You played the whole melody.'
             : 'Correct! $targetIndex of ${song.notes.length} notes';
       });
-      _prefs?.setInt('xp', xp);
+      _scheduleProgressSave();
       if (targetIndex == song.notes.length) _finishSong();
     } else {
       setState(() => feedback = 'Not quite — try ${noteLabel(expected)} (${solfegeLabel(expected)})');
@@ -266,8 +288,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
       completedSongs = math.max(completedSongs, songIndex + 1).toInt();
       feedback = 'Song completed! You earned ${song.notes.length * 5} XP.';
     });
-    _prefs?.setInt('completed', completedSongs);
-    _prefs?.setInt('xp', xp);
+    unawaited(_persistProgress());
   }
 
   Future<void> _playDemo() async {
@@ -351,11 +372,11 @@ class _PianoHomePageState extends State<PianoHomePage> {
         onNote: _playNote,
         onEarnXp: () {
           setState(() => xp += 5);
-          _prefs?.setInt('xp', xp);
+          _scheduleProgressSave();
         },
         onComplete: () {
           setState(() => completedSongs = math.max(completedSongs, songIndex + 1).toInt());
-          _prefs?.setInt('completed', completedSongs);
+          _scheduleProgressSave();
         },
         songTitle: song.title,
         notes: song.notes,
