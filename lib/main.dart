@@ -79,9 +79,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
   int xp = 0;
   int streak = 1;
   String mode = 'idle';
-  bool showHints = true;
   bool isPlayingDemo = false;
-  bool isBusy = false;
   String feedback = 'Choose a song and start learning';
   final Map<int, AudioPlayer> _players = {};
   Timer? _demoTimer;
@@ -208,14 +206,14 @@ class _PianoHomePageState extends State<PianoHomePage> {
     _demoTimer?.cancel();
     setState(() {
       mode = 'complete';
-      completedSongs = math.max(completedSongs, songIndex + 1);
+      completedSongs = math.max(completedSongs, songIndex + 1).toInt();
       feedback = 'Song completed! You earned ${song.notes.length * 5} XP.';
     });
     _prefs?.setInt('completed', completedSongs);
     _prefs?.setInt('xp', xp);
   }
 
-  Future<void> _playDemo({bool wholeSong = true}) async {
+  Future<void> _playDemo() async {
     _demoTimer?.cancel();
     setState(() {
       mode = 'watch';
@@ -249,7 +247,6 @@ class _PianoHomePageState extends State<PianoHomePage> {
       mode = challenge ? 'challenge' : 'practice';
       targetIndex = 0;
       feedback = challenge ? 'Play the song from memory. You can do it!' : 'Follow the notes. The first note is ${noteLabel(song.notes.first)}';
-      showHints = !challenge;
     });
     if (!challenge) {
       Future.delayed(const Duration(milliseconds: 450), () {
@@ -411,7 +408,6 @@ class _PianoHomePageState extends State<PianoHomePage> {
   );
 
   Widget _keyboard() {
-    const start = 60;
     const whiteMidis = [60, 62, 64, 65, 67, 69, 71, 72, 74, 76, 77, 79, 81, 83];
     const blackOffsets = {61: 0, 63: 1, 66: 3, 68: 4, 70: 5, 73: 7, 75: 8, 78: 10, 80: 11, 82: 12};
     return LayoutBuilder(builder: (context, constraints) {
