@@ -93,8 +93,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
   int selectedTab = 0;
   int songIndex = 0;
   int activeMidi = -1;
-  final Map<int, int> keyTapCounts = {};
-  int totalKeyTaps = 0;
+  final Set<int> pressedKeys = {};
   int targetIndex = 0;
   int completedSongs = 0;
   int xp = 0;
@@ -104,7 +103,6 @@ class _PianoHomePageState extends State<PianoHomePage> {
   String feedback = 'Choose a song and start learning';
   final Map<int, AudioPlayer> _players = {};
   Timer? _demoTimer;
-  Timer? _flashTimer;
   SharedPreferences? _prefs;
 
   Song get song => songs[songIndex];
@@ -128,7 +126,6 @@ class _PianoHomePageState extends State<PianoHomePage> {
   @override
   void dispose() {
     _demoTimer?.cancel();
-    _flashTimer?.cancel();
     for (final player in _players.values) {
       player.dispose();
     }
@@ -189,17 +186,20 @@ class _PianoHomePageState extends State<PianoHomePage> {
   }
 
   void _pressKey(int midi) {
-    keyTapCounts[midi] = (keyTapCounts[midi] ?? 0) + 1;
-    totalKeyTaps++;
     _playNote(midi);
-    setState(() => activeMidi = midi);
-    _flashTimer?.cancel();
-    _flashTimer = Timer(const Duration(milliseconds: 180), () {
-      if (mounted) setState(() => activeMidi = -1);
+    setState(() {
+      pressedKeys.add(midi);
+      activeMidi = midi;
     });
     if (mode == 'practice' || mode == 'challenge') {
       _checkAnswer(midi);
     }
+  }
+
+  void _releaseKey(int midi) {
+    if (!mounted) return;
+    setState(() => pressedKeys.remove(midi));
+    if (activeMidi == midi) setState(() => activeMidi = -1);
   }
 
   void _checkAnswer(int midi) {
@@ -262,6 +262,14 @@ class _PianoHomePageState extends State<PianoHomePage> {
       _demoTimer = Timer(interval, tick);
     }
     await tick();
+  }
+
+  void _releaseKey(int midi) {
+    if (!mounted) return;
+    setState(() {
+      pressedKeys.remove(midi);
+      if (activeMidi == midi) activeMidi = -1;
+    });
   }
 
   void _startPractice({bool challenge = false}) {
@@ -478,8 +486,12 @@ class _PianoHomePageState extends State<PianoHomePage> {
           return Expanded(child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTapDown: (_) => _pressKey(midi),
+            onTapUp: (_) => _releaseKey(midi),
+            onTapCancel: () => _releaseKey(midi),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 90),
+              duration: const Duration(milliseconds: 75),
+              curve: Curves.easeOutCubic,
+              transform: Matrix4.translationValues(0, pressedKeys.contains(midi) ? 5 : 0, 0),
               margin: const EdgeInsets.symmetric(horizontal: 1),
               decoration: BoxDecoration(
                 color: isActive ? const Color(0xFF9DEBFF) : Colors.white,
@@ -490,8 +502,6 @@ class _PianoHomePageState extends State<PianoHomePage> {
               alignment: Alignment.bottomCenter,
               padding: const EdgeInsets.only(bottom: 8),
               child: Stack(children: [
-                if ((keyTapCounts[midi] ?? 0) > 0)
-                  Positioned(top: 3, right: 2, child: _tapBadge(keyTapCounts[midi]!, dark: false)),
                 Align(alignment: Alignment.bottomCenter, child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
                   Text(noteNames[midi % 12], style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: isActive ? cobalt : const Color(0xFF66728A))),
                   Text(solfegeLabel(midi), style: const TextStyle(fontSize: 7, color: Color(0xFF9AA4B6))),
@@ -508,8 +518,12 @@ class _PianoHomePageState extends State<PianoHomePage> {
             left: left, top: 0, width: whiteWidth * .62, height: 91,
             child: GestureDetector(
               onTapDown: (_) => _pressKey(midi),
+              onTapUp: (_) => _releaseKey(midi),
+              onTapCancel: () => _releaseKey(midi),
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 90),
+                duration: const Duration(milliseconds: 75),
+                curve: Curves.easeOutCubic,
+                transform: Matrix4.translationValues(0, pressedKeys.contains(midi) ? 5 : 0, 0),
                 decoration: BoxDecoration(
                   color: isActive ? cobalt : const Color(0xFF26334F),
                   borderRadius: const BorderRadius.vertical(bottom: Radius.circular(6)),
@@ -519,8 +533,6 @@ class _PianoHomePageState extends State<PianoHomePage> {
                 alignment: Alignment.bottomCenter,
                 padding: const EdgeInsets.only(bottom: 7),
                 child: Stack(children: [
-                  if ((keyTapCounts[midi] ?? 0) > 0)
-                    Positioned(top: 3, left: 0, right: 0, child: Center(child: _tapBadge(keyTapCounts[midi]!, dark: true))),
                   Align(alignment: Alignment.bottomCenter, child: Text(noteNames[midi % 12], style: const TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.w800))),
                 ]),
               ),
@@ -530,16 +542,6 @@ class _PianoHomePageState extends State<PianoHomePage> {
       ]);
     });
   }
-
-  Widget _tapBadge(int count, {required bool dark, bool compact = false}) => Container(
-    padding: EdgeInsets.symmetric(horizontal: compact ? 3 : 4, vertical: compact ? 1 : 2),
-    decoration: BoxDecoration(
-      color: dark ? const Color(0xFF54D8F2) : const Color(0xFF315BFF),
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: Colors.white.withOpacity(.85), width: .7),
-    ),
-    child: Text('$count', style: TextStyle(color: dark ? const Color(0xFF101B36) : Colors.white, fontSize: compact ? 7 : 8, fontWeight: FontWeight.w900)),
-  );
 
   Widget _feedbackPanel() => Container(
     padding: const EdgeInsets.all(13),
@@ -722,8 +724,7 @@ class FullScreenPianoPage extends StatefulWidget {
 
 class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
   int activeMidi = -1;
-  final Map<int, int> keyTapCounts = {};
-  int totalKeyTaps = 0;
+  final Set<int> pressedKeys = {};
   int targetIndex = 0;
   String lessonMode = 'idle';
   String feedback = 'Choose Listen or Practice to begin';
@@ -743,13 +744,10 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
   }
 
   void _play(int midi) {
-    keyTapCounts[midi] = (keyTapCounts[midi] ?? 0) + 1;
-    totalKeyTaps++;
     widget.onNote(midi);
-    setState(() => activeMidi = midi);
-    _releaseTimer?.cancel();
-    _releaseTimer = Timer(const Duration(milliseconds: 180), () {
-      if (mounted) setState(() => activeMidi = -1);
+    setState(() {
+      pressedKeys.add(midi);
+      activeMidi = midi;
     });
     if (lessonMode != 'practice' && lessonMode != 'challenge') return;
     if (finished) return;
@@ -827,8 +825,6 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
     _demoTimer?.cancel();
     setState(() {
       targetIndex = 0;
-      keyTapCounts.clear();
-      totalKeyTaps = 0;
       lessonMode = 'idle';
       demoPlaying = false;
       activeMidi = -1;
@@ -895,8 +891,12 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
                       return Expanded(child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTapDown: (_) => _play(midi),
+                        onTapUp: (_) => _releaseKey(midi),
+                        onTapCancel: () => _releaseKey(midi),
                         child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 70),
+                          duration: const Duration(milliseconds: 75),
+                          curve: Curves.easeOutCubic,
+                          transform: Matrix4.translationValues(0, pressedKeys.contains(midi) ? 5 : 0, 0),
                           margin: const EdgeInsets.symmetric(horizontal: 1),
                           decoration: BoxDecoration(
                             color: selected ? const Color(0xFF9DEBFF) : target ? const Color(0xFFDCE8FF) : const Color(0xFFFAFBFF),
@@ -907,8 +907,6 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
                           alignment: Alignment.bottomCenter,
                           padding: EdgeInsets.only(bottom: compact ? 6 : 11),
                           child: Stack(children: [
-                            if ((keyTapCounts[midi] ?? 0) > 0)
-                              Positioned(top: 3, right: 2, child: _tapBadge(keyTapCounts[midi]!, dark: false, compact: compact)),
                             Align(alignment: Alignment.bottomCenter, child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
                               Text(noteNames[midi % 12], style: TextStyle(fontSize: compact ? 8 : 11, fontWeight: FontWeight.w900, color: selected || target ? cobalt : const Color(0xFF53617D))),
                               Text(solfegeLabel(midi), style: TextStyle(fontSize: compact ? 6 : 8, color: const Color(0xFF8994AA))),
@@ -926,8 +924,12 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
                         top: 0, width: whiteWidth * .62, height: blackHeight,
                         child: GestureDetector(
                           onTapDown: (_) => _play(midi),
+                          onTapUp: (_) => _releaseKey(midi),
+                          onTapCancel: () => _releaseKey(midi),
                           child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 70),
+                            duration: const Duration(milliseconds: 75),
+                            curve: Curves.easeOutCubic,
+                            transform: Matrix4.translationValues(0, pressedKeys.contains(midi) ? 5 : 0, 0),
                             decoration: BoxDecoration(
                               color: selected ? cobalt : target ? const Color(0xFF315BFF) : const Color(0xFF101A31),
                               borderRadius: const BorderRadius.vertical(bottom: Radius.circular(7)),
@@ -937,8 +939,6 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
                             alignment: Alignment.bottomCenter,
                             padding: EdgeInsets.only(bottom: compact ? 5 : 8),
                             child: Stack(children: [
-                              if ((keyTapCounts[midi] ?? 0) > 0)
-                                Positioned(top: 3, left: 0, right: 0, child: Center(child: _tapBadge(keyTapCounts[midi]!, dark: true, compact: compact))),
                               Align(alignment: Alignment.bottomCenter, child: Text(noteNames[midi % 12], style: TextStyle(color: Colors.white, fontSize: compact ? 6 : 8, fontWeight: FontWeight.w800))),
                             ]),
                           ),
@@ -949,12 +949,8 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
                 }),
               )),
               SizedBox(height: compact ? 3 : 6),
-              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                const Text('C4 – B5  •  2 OCTAVES', style: TextStyle(color: Colors.white38, fontSize: 8, fontWeight: FontWeight.w700, letterSpacing: .4)),
-                const SizedBox(width: 12),
-                const Icon(Icons.touch_app_rounded, color: cyan, size: 11),
-                const SizedBox(width: 4),
-                Text('$totalKeyTaps key taps', style: const TextStyle(color: Color(0xFF9FB5FF), fontSize: 8, fontWeight: FontWeight.w900)),
+              const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Text('C4 – B5  •  2 OCTAVES  •  PRESS & HOLD TO PLAY', style: TextStyle(color: Colors.white38, fontSize: 8, fontWeight: FontWeight.w700, letterSpacing: .4)),
               ]),
             ]),
           );
@@ -962,16 +958,6 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
       ),
     );
   }
-
-  Widget _tapBadge(int count, {required bool dark, bool compact = false}) => Container(
-    padding: EdgeInsets.symmetric(horizontal: compact ? 3 : 4, vertical: compact ? 1 : 2),
-    decoration: BoxDecoration(
-      color: dark ? const Color(0xFF54D8F2) : const Color(0xFF315BFF),
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: Colors.white.withOpacity(.9), width: .7),
-    ),
-    child: Text('$count', style: TextStyle(color: dark ? const Color(0xFF101B36) : Colors.white, fontSize: compact ? 7 : 8, fontWeight: FontWeight.w900)),
-  );
 
   Widget _noteRoadmap(bool compact) {
     final start = math.max(0, targetIndex - 2);
