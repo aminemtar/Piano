@@ -278,6 +278,10 @@ class _PianoHomePageState extends State<PianoHomePage> {
           setState(() => xp += 5);
           _prefs?.setInt('xp', xp);
         },
+        onComplete: () {
+          setState(() => completedSongs = math.max(completedSongs, songIndex + 1).toInt());
+          _prefs?.setInt('completed', completedSongs);
+        },
         songTitle: song.title,
         notes: song.notes,
         bpm: song.bpm,
@@ -665,11 +669,12 @@ class _PianoHomePageState extends State<PianoHomePage> {
 class FullScreenPianoPage extends StatefulWidget {
   final ValueChanged<int> onNote;
   final VoidCallback onEarnXp;
+  final VoidCallback onComplete;
   final String songTitle;
   final List<int> notes;
   final int bpm;
 
-  const FullScreenPianoPage({super.key, required this.onNote, required this.onEarnXp, required this.songTitle, required this.notes, required this.bpm});
+  const FullScreenPianoPage({super.key, required this.onNote, required this.onEarnXp, required this.onComplete, required this.songTitle, required this.notes, required this.bpm});
 
   @override
   State<FullScreenPianoPage> createState() => _FullScreenPianoPageState();
@@ -681,6 +686,7 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
   String lessonMode = 'idle';
   String feedback = 'Choose Listen or Practice to begin';
   bool demoPlaying = false;
+  bool completionReported = false;
   Timer? _releaseTimer;
   Timer? _demoTimer;
 
@@ -709,7 +715,13 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
       setState(() {
         targetIndex++;
         feedback = finished ? 'Excellent! You completed the whole song.' : 'Correct! Next: ' + noteLabel(widget.notes[targetIndex]) + ' (' + solfegeLabel(widget.notes[targetIndex]) + ').';
-        if (finished) lessonMode = 'complete';
+        if (finished) {
+          lessonMode = 'complete';
+          if (!completionReported) {
+            completionReported = true;
+            widget.onComplete();
+          }
+        }
       });
     } else {
       setState(() => feedback = 'Try ' + noteLabel(expected) + ' (' + solfegeLabel(expected) + ').');
@@ -725,6 +737,7 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
     _demoTimer?.cancel();
     setState(() {
       targetIndex = 0;
+      completionReported = false;
       lessonMode = challenge ? 'challenge' : 'practice';
       demoPlaying = false;
       feedback = challenge ? 'Play from memory. Keys will not be highlighted.' : 'Follow the glowing key: ' + noteLabel(widget.notes.first) + ' (' + solfegeLabel(widget.notes.first) + ').';
@@ -809,12 +822,14 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
                 const SizedBox(width: 7),
                 _lessonButton(Icons.refresh_rounded, 'Reset', onPressed: _reset),
               ]),
-              SizedBox(height: compact ? 5 : 8),
+              SizedBox(height: compact ? 4 : 7),
               Row(children: [
                 Expanded(child: Text(feedback, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600))),
                 const SizedBox(width: 10),
                 Text(targetIndex.toString() + '/' + widget.notes.length.toString(), style: const TextStyle(color: Color(0xFF9FB5FF), fontSize: 10, fontWeight: FontWeight.w900)),
               ]),
+              const SizedBox(height: 5),
+              _noteRoadmap(compact),
               const SizedBox(height: 5),
               ClipRRect(borderRadius: BorderRadius.circular(10), child: LinearProgressIndicator(value: targetIndex / widget.notes.length, minHeight: 4, backgroundColor: Colors.white12, color: cyan)),
               SizedBox(height: compact ? 5 : 9),
@@ -885,6 +900,59 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
           );
         }),
       ),
+    );
+  }
+
+  Widget _noteRoadmap(bool compact) {
+    final start = math.max(0, targetIndex - 2);
+    final end = math.min(widget.notes.length, targetIndex + 6);
+    return SizedBox(
+      height: compact ? 27 : 34,
+      child: Row(children: [
+        const Padding(
+          padding: EdgeInsets.only(right: 7),
+          child: Icon(Icons.route_rounded, color: Color(0xFF8FA8E8), size: 14),
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: List.generate(end - start, (offset) {
+              final index = start + offset;
+              final midi = widget.notes[index];
+              final isDone = index < targetIndex;
+              final isCurrent = index == targetIndex && (guided || lessonMode == 'challenge');
+              return Container(
+                width: compact ? 31 : 37,
+                height: compact ? 24 : 30,
+                margin: const EdgeInsets.only(right: 4),
+                decoration: BoxDecoration(
+                  color: isCurrent ? cobalt : isDone ? const Color(0xFF1D806F) : const Color(0xFF223454),
+                  borderRadius: BorderRadius.circular(7),
+                  border: Border.all(color: isCurrent ? cyan : isDone ? const Color(0xFF3AC6A2) : const Color(0xFF405477), width: isCurrent ? 1.5 : .7),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  noteNames[midi % 12],
+                  style: TextStyle(color: Colors.white, fontSize: compact ? 8 : 9, fontWeight: FontWeight.w900),
+                ),
+              );
+            })),
+          ),
+        ),
+        if (targetIndex < widget.notes.length)
+          Padding(
+            padding: const EdgeInsets.only(left: 6),
+            child: Text(
+              solfegeLabel(widget.notes[targetIndex]),
+              style: const TextStyle(color: cyan, fontSize: 9, fontWeight: FontWeight.w900),
+            ),
+          )
+        else
+          const Padding(
+            padding: EdgeInsets.only(left: 6),
+            child: Icon(Icons.check_circle_rounded, color: Color(0xFF3AC6A2), size: 16),
+          ),
+      ]),
     );
   }
 
