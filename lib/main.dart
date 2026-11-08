@@ -332,6 +332,14 @@ class _PianoHomePageState extends State<PianoHomePage> {
   }
 
   Future<void> _openFullScreenPiano() async {
+    _demoTimer?.cancel();
+    _hintTimer?.cancel();
+    if (mounted) {
+      setState(() {
+        isPlayingDemo = false;
+        if (mode == 'watch') mode = 'ready';
+      });
+    }
     await SystemChrome.setPreferredOrientations(const [
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
