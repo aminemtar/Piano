@@ -110,6 +110,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
   int _nextVoice = 0;
   bool _audioDisposed = false;
   Timer? _demoTimer;
+  Timer? _hintTimer;
   SharedPreferences? _prefs;
 
   Song get song => songs[songIndex];
@@ -133,6 +134,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
   @override
   void dispose() {
     _demoTimer?.cancel();
+    _hintTimer?.cancel();
     _audioDisposed = true;
     final cleanupTasks = <Future<void>>[];
     for (var index = 0; index < _players.length; index++) {
@@ -143,7 +145,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
         queuedPlayback.catchError((_) {}).then((_) => player.dispose()),
       );
     }
-    unawaited(Future.wait(cleanupTasks));
+    unawaited(Future.wait(cleanupTasks).catchError((_) {}));
     _toneCache.clear();
     super.dispose();
   }
@@ -248,7 +250,8 @@ class _PianoHomePageState extends State<PianoHomePage> {
     } else {
       setState(() => feedback = 'Not quite — try ${noteLabel(expected)} (${solfegeLabel(expected)})');
       if (mode == 'practice') {
-        Future.delayed(const Duration(milliseconds: 350), () {
+        _hintTimer?.cancel();
+        _hintTimer = Timer(const Duration(milliseconds: 350), () {
           if (mounted && mode == 'practice') _playNote(expected);
         });
       }
@@ -257,6 +260,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
 
   void _finishSong() {
     _demoTimer?.cancel();
+    _hintTimer?.cancel();
     setState(() {
       mode = 'complete';
       completedSongs = math.max(completedSongs, songIndex + 1).toInt();
@@ -268,6 +272,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
 
   Future<void> _playDemo() async {
     _demoTimer?.cancel();
+    _hintTimer?.cancel();
     setState(() {
       mode = 'watch';
       isPlayingDemo = true;
@@ -277,7 +282,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
     var i = 0;
     final interval = Duration(milliseconds: (60000 / song.bpm).round());
     Future<void> tick() async {
-      if (!mounted || i >= song.notes.length) {
+      if (!mounted || mode != 'watch' || !isPlayingDemo || i >= song.notes.length) {
         if (mounted) setState(() {
           isPlayingDemo = false;
           activeMidi = -1;
@@ -289,20 +294,24 @@ class _PianoHomePageState extends State<PianoHomePage> {
       final midi = song.notes[i++];
       setState(() => activeMidi = midi);
       await _playNote(midi);
-      _demoTimer = Timer(interval, tick);
+      if (mounted && mode == 'watch' && isPlayingDemo) {
+        _demoTimer = Timer(interval, tick);
+      }
     }
     await tick();
   }
 
   void _startPractice({bool challenge = false}) {
     _demoTimer?.cancel();
+    _hintTimer?.cancel();
+    _hintTimer?.cancel();
     setState(() {
       mode = challenge ? 'challenge' : 'practice';
       targetIndex = 0;
       feedback = challenge ? 'Play the song from memory. You can do it!' : 'Follow the notes. The first note is ${noteLabel(song.notes.first)}';
     });
     if (!challenge) {
-      Future.delayed(const Duration(milliseconds: 450), () {
+      _hintTimer = Timer(const Duration(milliseconds: 450), () {
         if (mounted && mode == 'practice') _playNote(song.notes.first);
       });
     }
@@ -310,6 +319,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
 
   void _resetPractice() {
     _demoTimer?.cancel();
+    _hintTimer?.cancel();
     setState(() {
       targetIndex = 0;
       mode = 'ready';
@@ -353,6 +363,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
 
   void _selectSong(int index) {
     _demoTimer?.cancel();
+    _hintTimer?.cancel();
     setState(() {
       songIndex = index;
       targetIndex = 0;
@@ -756,6 +767,7 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
   bool demoPlaying = false;
   bool completionReported = false;
   Timer? _demoTimer;
+  Timer? _hintTimer;
 
   bool get guided => lessonMode == 'practice';
   bool get finished => targetIndex >= widget.notes.length;
@@ -763,6 +775,7 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
   @override
   void dispose() {
     _demoTimer?.cancel();
+    _hintTimer?.cancel();
     super.dispose();
   }
 
@@ -791,7 +804,8 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
     } else {
       setState(() => feedback = 'Try ' + noteLabel(expected) + ' (' + solfegeLabel(expected) + ').');
       if (guided) {
-        Future.delayed(const Duration(milliseconds: 350), () {
+        _hintTimer?.cancel();
+        _hintTimer = Timer(const Duration(milliseconds: 350), () {
           if (mounted && lessonMode == 'practice') widget.onNote(expected);
         });
       }
@@ -824,6 +838,7 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
 
   void _listen() {
     _demoTimer?.cancel();
+    _hintTimer?.cancel();
     var index = 0;
     final interval = Duration(milliseconds: (60000 / widget.bpm).round());
     setState(() {
@@ -834,7 +849,7 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
       activeMidi = -1;
     });
     void tick() {
-      if (!mounted) return;
+      if (!mounted || !demoPlaying || lessonMode != 'listen') return;
       if (index >= widget.notes.length) {
         setState(() {
           demoPlaying = false;
@@ -854,6 +869,7 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
 
   void _reset() {
     _demoTimer?.cancel();
+    _hintTimer?.cancel();
     setState(() {
       targetIndex = 0;
       lessonMode = 'idle';
