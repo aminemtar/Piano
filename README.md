@@ -6,13 +6,15 @@ A Flutter piano-learning game for Android and iOS. Start with the seven musical 
 
 - Two-octave interactive piano (C4–B5), including black keys.
 - Do/Re/Mi/Fa/Sol/La/Si labels alongside note letters.
-- Synthesized piano-like tones generated locally at runtime (no streamed audio or external sound service).
+- Locally synthesized piano-like tones (no streaming or external sound service).
+- A bounded six-voice audio pool with cached note data to avoid creating a new audio player for every press.
 - Song demonstrations with highlighted keys.
 - Guided practice that checks the next expected note and repeats the expected note after a mistake.
 - A challenge mode that hides note hints.
-- Beginner song library: Ode to Joy, Twinkle Twinkle, and Mary Had a Little Lamb.
+- Twelve melodies, from beginner nursery songs to intermediate excerpts: Ode to Joy, Twinkle Twinkle, Mary Had a Little Lamb, Happy Birthday, Jingle Bells, Frère Jacques, London Bridge, Row Row Row Your Boat, Amazing Grace, The Entertainer, Minuet in G, and When the Saints Go Marching In.
 - Local XP and learning progress saved with SharedPreferences.
-- Responsive learning, song-library, and progress screens.
+- Responsive learning, song-library, and progress screens, plus a dedicated landscape full-screen practice keyboard.
+- Press-and-hold key animation with a visible down/up movement.
 
 ## Run locally
 
@@ -37,6 +39,6 @@ The repository contains the Dart application source and package configuration. T
 
 ## Notes
 
-- The initial piano uses a lightweight synthesized tone with a short harmonic envelope. It is a functional learning prototype, not a sampled concert-grand piano soundbank.
-- The initial song catalog uses short beginner melodies. Add more songs by defining their MIDI note sequences in `lib/main.dart`.
+- The piano tones are synthesized locally with a short harmonic envelope. They are intentionally lightweight and are not a sampled concert-grand piano soundbank. The audio engine reuses up to six players and caches the 24 keyboard tones; this bounds player allocation and avoids regenerating the same waveform on every press.
+- Add songs by defining MIDI note sequences in `lib/main.dart`. Keep notes within MIDI 60–83 (C4–B5) unless the keyboard range is expanded, and add tests for any new range.
 - MIDI keyboard input, sheet-music notation, both-hand lessons, rhythm scoring, and a larger licensed song catalog are planned next.
