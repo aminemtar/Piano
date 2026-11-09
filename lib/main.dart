@@ -252,6 +252,12 @@ class _PianoHomePageState extends State<PianoHomePage> {
   int _darbukaLessonIndex = 0;
   int _darbukaLessonStep = 0;
   int _darbukaLessonCompleted = 0;
+  int _darbukaTempo = 90;
+  int _darbukaBeat = 0;
+  bool _darbukaMetronomeOn = false;
+  bool _darbukaDemoPlaying = false;
+  Timer? _darbukaMetronomeTimer;
+  Timer? _darbukaPlaybackTimer;
   int songIndex = 0;
   int activeMidi = -1;
   final Set<int> pressedKeys = {};
@@ -320,6 +326,8 @@ class _PianoHomePageState extends State<PianoHomePage> {
   @override
   void dispose() {
     _demoTimer?.cancel();
+    _darbukaMetronomeTimer?.cancel();
+    _darbukaPlaybackTimer?.cancel();
     _hintTimer?.cancel();
     _progressSaveTimer?.cancel();
     unawaited(_persistProgress());
@@ -1595,10 +1603,89 @@ class _PianoHomePageState extends State<PianoHomePage> {
 
 
   void _selectDarbukaLesson(int index) {
+    _stopDarbukaDemo();
     setState(() {
       _darbukaLessonIndex = index;
       _darbukaLessonStep = 0;
     });
+  }
+
+
+  Duration get _darbukaBeatDuration =>
+      Duration(milliseconds: (60000 / _darbukaTempo).round());
+
+  void _toggleDarbukaMetronome() {
+    if (_darbukaMetronomeOn) {
+      _darbukaMetronomeTimer?.cancel();
+      setState(() {
+        _darbukaMetronomeOn = false;
+        _darbukaBeat = 0;
+      });
+      return;
+    }
+    _darbukaMetronomeTimer?.cancel();
+    setState(() {
+      _darbukaMetronomeOn = true;
+      _darbukaBeat = 0;
+    });
+    HapticFeedback.lightImpact();
+    _darbukaMetronomeTimer = Timer.periodic(_darbukaBeatDuration, (_) {
+      if (!mounted || !_darbukaMetronomeOn) return;
+      setState(() => _darbukaBeat = (_darbukaBeat + 1) % 4);
+      HapticFeedback.selectionClick();
+    });
+  }
+
+  void _stopDarbukaDemo() {
+    _darbukaPlaybackTimer?.cancel();
+    _darbukaPlaybackTimer = null;
+    if (mounted && _darbukaDemoPlaying) {
+      setState(() => _darbukaDemoPlaying = false);
+    } else {
+      _darbukaDemoPlaying = false;
+    }
+  }
+
+  void _playDarbukaDemo() {
+    if (_darbukaDemoPlaying) {
+      _stopDarbukaDemo();
+      return;
+    }
+    _darbukaMetronomeTimer?.cancel();
+    final pattern = darbukaLessons[_darbukaLessonIndex].pattern;
+    var step = 0;
+    setState(() {
+      _darbukaMetronomeOn = false;
+      _darbukaBeat = 0;
+      _darbukaDemoPlaying = true;
+      feedback = 'Listen to the rhythm, then copy it on the drum.';
+    });
+    _playDarbuka(pattern[step]);
+    step++;
+    _darbukaPlaybackTimer = Timer.periodic(_darbukaBeatDuration, (timer) {
+      if (!mounted || step >= pattern.length) {
+        timer.cancel();
+        if (mounted) setState(() => _darbukaDemoPlaying = false);
+        return;
+      }
+      _playDarbuka(pattern[step]);
+      setState(() => _darbukaBeat = step % 4);
+      step++;
+    });
+  }
+
+  void _changeDarbukaTempo(double value) {
+    final next = value.round();
+    if (next == _darbukaTempo) return;
+    setState(() => _darbukaTempo = next);
+    if (_darbukaMetronomeOn) {
+      _darbukaMetronomeTimer?.cancel();
+      _darbukaMetronomeTimer = Timer.periodic(_darbukaBeatDuration, (_) {
+        if (!mounted || !_darbukaMetronomeOn) return;
+        setState(() => _darbukaBeat = (_darbukaBeat + 1) % 4);
+        HapticFeedback.selectionClick();
+      });
+    }
   }
 
   void _handleDarbukaLessonHit(String hit) {
@@ -1753,6 +1840,69 @@ class _PianoHomePageState extends State<PianoHomePage> {
                 child: const Text('Restart'),
               ),
             ]),
+          ]),
+        ),
+
+        Container(
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE5EBF6)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.speed_rounded, color: cobalt, size: 18),
+              const SizedBox(width: 8),
+              const Text('TEMPO & METRONOME', style: TextStyle(
+                color: navy, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: .8,
+              )),
+              const Spacer(),
+              Text('$_darbukaTempo BPM', style: const TextStyle(
+                color: cobalt, fontSize: 13, fontWeight: FontWeight.w900,
+              )),
+            ]),
+            Slider(
+              value: _darbukaTempo.toDouble(),
+              min: 50, max: 180, divisions: 26,
+              activeColor: cobalt,
+              onChanged: _changeDarbukaTempo,
+            ),
+            Row(children: [
+              const Text('50', style: TextStyle(color: Color(0xFF8994AA), fontSize: 9)),
+              const Spacer(),
+              const Text('180 BPM', style: TextStyle(color: Color(0xFF8994AA), fontSize: 9)),
+            ]),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(child: OutlinedButton.icon(
+                onPressed: _toggleDarbukaMetronome,
+                icon: Icon(_darbukaMetronomeOn ? Icons.stop_rounded : Icons.timer_rounded, size: 17),
+                label: Text(_darbukaMetronomeOn ? 'Stop metronome' : 'Metronome'),
+              )),
+              const SizedBox(width: 8),
+              Expanded(child: FilledButton.icon(
+                onPressed: _playDarbukaDemo,
+                icon: Icon(_darbukaDemoPlaying ? Icons.stop_rounded : Icons.play_arrow_rounded, size: 17),
+                label: Text(_darbukaDemoPlaying ? 'Stop demo' : 'Hear rhythm'),
+              )),
+            ]),
+            const SizedBox(height: 12),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(4, (index) {
+              final active = _darbukaBeat == index && (_darbukaMetronomeOn || _darbukaDemoPlaying);
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 100),
+                margin: const EdgeInsets.symmetric(horizontal: 6),
+                width: active ? 15 : 10, height: active ? 15 : 10,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: active ? cobalt : const Color(0xFFDCE3F1),
+                ),
+              );
+            })),
+            const SizedBox(height: 5),
+            const Center(child: Text('4-beat pulse · adjust speed while practising',
+              style: TextStyle(color: Color(0xFF8994AA), fontSize: 9))),
           ]),
         ),
         const SizedBox(height: 14),
