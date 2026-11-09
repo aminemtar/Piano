@@ -308,17 +308,18 @@ class _PianoHomePageState extends State<PianoHomePage> {
   }
 
   void _playDarbuka(String hit) {
-    if (_audioDisposed) return;
+    if (_audioDisposed || !_darbukaReady) return;
     final poolFuture = _darbukaPools[hit];
-    if (poolFuture == null) {
-      unawaited(_prepareDarbukaPools());
-      return;
-    }
+    if (poolFuture == null) return;
+    HapticFeedback.selectionClick();
     unawaited(poolFuture.then((pool) async {
       if (!_audioDisposed) await pool.start();
     }).catchError((_) {
       if (mounted && !_audioDisposed) {
-        setState(() => feedback = 'Darbuka audio is not ready. Check your connection.');
+        setState(() {
+          _darbukaReady = false;
+          feedback = 'Darbuka audio is not ready. Reopen this tab to reload the sounds.';
+        });
       }
     }));
   }
@@ -874,7 +875,29 @@ class _PianoHomePageState extends State<PianoHomePage> {
             const Spacer(),
             Text('3 SOUNDS', style: TextStyle(color: Colors.white.withValues(alpha: .55), fontSize: 9, fontWeight: FontWeight.w800)),
           ]),
-          const SizedBox(height: 22),
+          const SizedBox(height: 12),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(
+              _darbukaReady ? Icons.check_circle_rounded : Icons.downloading_rounded,
+              color: _darbukaReady ? const Color(0xFF7BE2BD) : const Color(0xFFFFD18A),
+              size: 13,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              _darbukaReady
+                  ? 'SOUNDS READY'
+                  : _darbukaPreparing
+                      ? 'LOADING REAL DRUM SAMPLES…'
+                      : 'PREPARING DRUM SAMPLES…',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: .8),
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                letterSpacing: .8,
+              ),
+            ),
+          ]),
+          const SizedBox(height: 16),
           LayoutBuilder(builder: (context, constraints) {
             final size = constraints.maxWidth < 390 ? 136.0 : 158.0;
             return Wrap(
@@ -889,7 +912,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
             );
           }),
           const SizedBox(height: 18),
-          Text('Tap quickly or hold a pad to play. Mix the three strikes to create your own rhythm.',
+          Text('Tap the pads after the sounds are ready. Each tap triggers immediately; play quick repeated strikes to build a rhythm.',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.white.withValues(alpha: .68), fontSize: 10, height: 1.5)),
         ]),
