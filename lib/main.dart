@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_soloud/flutter_soloud.dart';
 
 void main() => runApp(const PianoLearnApp());
 
@@ -109,9 +110,11 @@ class _PianoHomePageState extends State<PianoHomePage> {
   final List<Future<void>> _voiceQueues =
       List<Future<void>>.filled(_audioVoiceCount, Future<void>.value());
   final Map<int, Uint8List> _toneCache = {};
-  final Map<String, Future<AudioPool>> _darbukaPools = {};
+  final Map<String, List<AudioSource>> _darbukaSources = {};
+  final math.Random _darbukaRandom = math.Random();
   bool _darbukaPreparing = false;
   bool _darbukaReady = false;
+  bool _soloudInitialized = false;
   int _nextVoice = 0;
   bool _audioDisposed = false;
   Timer? _demoTimer;
@@ -172,10 +175,8 @@ class _PianoHomePageState extends State<PianoHomePage> {
         queuedPlayback.catchError((_) {}).then((_) => player.dispose()),
       );
     }
-    for (final poolFuture in _darbukaPools.values) {
-      cleanupTasks.add(
-        poolFuture.then((pool) => pool.dispose()).catchError((_) {}),
-      );
+    if (_soloudInitialized) {
+      cleanupTasks.add(_disposeDarbukaAudio());
     }
     unawaited(Future.wait(cleanupTasks).then<void>((_) {}, onError: (Object error, StackTrace stackTrace) {}));
     _toneCache.clear();
@@ -271,57 +272,102 @@ class _PianoHomePageState extends State<PianoHomePage> {
     }
   }
 
-  Future<AudioPool> _createDarbukaPool(String filename) async {
-    final path = await _downloadDarbukaSample(filename);
-    return AudioPool.create(
-      source: DeviceFileSource(path),
-      minPlayers: 2,
-      maxPlayers: 4,
-    );
-  }
-
   Future<void> _prepareDarbukaPools() async {
     if (_darbukaReady || _darbukaPreparing || _audioDisposed) return;
     _darbukaPreparing = true;
-    if (mounted) setState(() => feedback = 'Preparing darbuka sounds…');
-    const files = <String, String>{
-      'doum': 'doom_01_01.flac',
-      'tek': 'tak_02_01.flac',
-      'ka': 'pa_03_01.flac',
-    };
+    if (mounted) setState(() => feedback = 'Preparing low-latency drum engine…');
+
+    // SoLoud mixes voices natively instead of restarting a small pool of
+    // platform players. Keep the buffer small but conservative for mid-range
+    // Android devices to reduce latency without inviting audio underruns.
     try {
-      await Future.wait(files.entries.map((entry) async {
-        _darbukaPools[entry.key] ??= _createDarbukaPool(entry.value);
-        await _darbukaPools[entry.key]!;
+      await SoLoud.instance.init(
+        sampleRate: 44100,
+        bufferSize: 1024,
+        channels: Channels.stereo,
+        lowLatency: true,
+      );
+      _soloudInitialized = true;
+      SoLoud.instance.setMaxActiveVoiceCount(48);
+
+      const files = <String, List<String>>{
+        'doum': ['doom_01_01.flac', 'doom_01_02.flac', 'doom_01_03.flac', 'doom_01_04.flac'],
+        'tek': ['tak_02_01.flac', 'tak_02_02.flac', 'tak_02_03.flac', 'tak_02_04.flac'],
+        'ka': ['pa_03_01.flac', 'pa_03_02.flac', 'pa_03_03.flac', 'pa_03_04.flac'],
+      };
+
+      final loadedEntries = await Future.wait(files.entries.map((entry) async {
+        final sources = await Future.wait(entry.value.map((filename) async {
+          final path = await _downloadDarbukaSample(filename);
+          return SoLoud.instance.loadFile(path, mode: LoadMode.memory);
+        }));
+        return MapEntry(entry.key, sources);
       }));
-      if (_audioDisposed) return;
+
+      if (_audioDisposed) {
+        for (final entry in loadedEntries) {
+          for (final source in entry.value) {
+            await SoLoud.instance.disposeSource(source);
+          }
+        }
+        await SoLoud.instance.deinitAsync();
+        _soloudInitialized = false;
+        return;
+      }
+
+      _darbukaSources.addEntries(loadedEntries);
       _darbukaReady = true;
       if (mounted) setState(() => feedback = 'Darbuka ready — play freely');
-    } catch (_) {
-      _darbukaPools.clear();
+    } catch (error) {
+      if (_soloudInitialized && SoLoud.instance.isInitialized) {
+        for (final sources in _darbukaSources.values) {
+          for (final source in sources) {
+            try { await SoLoud.instance.disposeSource(source); } catch (_) {}
+          }
+        }
+        _darbukaSources.clear();
+        try { await SoLoud.instance.deinitAsync(); } catch (_) {}
+        _soloudInitialized = false;
+      }
       if (mounted && !_audioDisposed) {
-        setState(() => feedback = 'Could not load darbuka sounds. Check your connection and reopen this tab.');
+        setState(() => feedback = 'Could not prepare drum audio: $error');
       }
     } finally {
       _darbukaPreparing = false;
     }
   }
 
-  void _playDarbuka(String hit) {
-    if (_audioDisposed || !_darbukaReady) return;
-    final poolFuture = _darbukaPools[hit];
-    if (poolFuture == null) return;
-    HapticFeedback.selectionClick();
-    unawaited(poolFuture.then((pool) async {
-      if (!_audioDisposed) await pool.start();
-    }).catchError((_) {
-      if (mounted && !_audioDisposed) {
-        setState(() {
-          _darbukaReady = false;
-          feedback = 'Darbuka audio is not ready. Reopen this tab to reload the sounds.';
-        });
+  Future<void> _disposeDarbukaAudio() async {
+    if (!_soloudInitialized || !SoLoud.instance.isInitialized) return;
+    for (final sources in _darbukaSources.values) {
+      for (final source in sources) {
+        try { await SoLoud.instance.disposeSource(source); } catch (_) {}
       }
-    }));
+    }
+    _darbukaSources.clear();
+    try { await SoLoud.instance.deinitAsync(); } catch (_) {}
+    _soloudInitialized = false;
+  }
+
+  void _playDarbuka(String hit) {
+    if (_audioDisposed || !_darbukaReady || !_soloudInitialized) return;
+    final variations = _darbukaSources[hit];
+    if (variations == null || variations.isEmpty) return;
+
+    // Rotate through separate recordings so repeated strikes do not sound
+    // identical. SoLoud creates independent native voices, allowing overlap.
+    final source = variations[_darbukaRandom.nextInt(variations.length)];
+    HapticFeedback.selectionClick();
+    try {
+      SoLoud.instance.play(
+        source,
+        volume: .92 + _darbukaRandom.nextDouble() * .08,
+      );
+    } catch (error) {
+      if (mounted && !_audioDisposed) {
+        setState(() => feedback = 'Drum playback failed: $error');
+      }
+    }
   }
 
   void _pressKey(int midi) {
@@ -873,7 +919,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
             const SizedBox(width: 8),
             const Text('PERCUSSION STUDIO', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.4)),
             const Spacer(),
-            Text('3 SOUNDS', style: TextStyle(color: Colors.white.withValues(alpha: .55), fontSize: 9, fontWeight: FontWeight.w800)),
+            Text('12 RECORDED VARIATIONS', style: TextStyle(color: Colors.white.withValues(alpha: .55), fontSize: 9, fontWeight: FontWeight.w800)),
           ]),
           const SizedBox(height: 12),
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -887,7 +933,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
               _darbukaReady
                   ? 'SOUNDS READY'
                   : _darbukaPreparing
-                      ? 'LOADING REAL DRUM SAMPLES…'
+                      ? 'LOADING DRUM ENGINE & 12 STRIKES…'
                       : 'PREPARING DRUM SAMPLES…',
               style: TextStyle(
                 color: Colors.white.withValues(alpha: .8),
@@ -912,7 +958,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
             );
           }),
           const SizedBox(height: 18),
-          Text('Tap the pads after the sounds are ready. Each tap triggers immediately; play quick repeated strikes to build a rhythm.',
+          Text('12 separately recorded strikes are loaded into a native low-latency mixer. Fast hits can overlap instead of restarting and cutting off the previous sound.',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.white.withValues(alpha: .68), fontSize: 10, height: 1.5)),
         ]),
