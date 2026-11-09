@@ -1611,10 +1611,9 @@ class _PianoHomePageState extends State<PianoHomePage> {
       if (hit == expected) {
         _darbukaLessonStep++;
         if (_darbukaLessonStep == lesson.pattern.length) {
-          _darbukaLessonCompleted = math.max(
-            _darbukaLessonCompleted,
-            _darbukaLessonIndex + 1,
-          );
+          if (_darbukaLessonCompleted < _darbukaLessonIndex + 1) {
+            _darbukaLessonCompleted = _darbukaLessonIndex + 1;
+          }
           feedback = 'Lesson complete! Great rhythm.';
         } else {
           feedback = 'Good strike — keep the rhythm going.';
