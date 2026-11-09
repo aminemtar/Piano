@@ -261,7 +261,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
     writeText(36, 'data');
     data.setUint32(40, count * 2, Endian.little);
 
-    final random = math.Random(hit.codeUnits.fold(0, (sum, value) => sum + value));
+    final random = math.Random(hit.codeUnits.fold<int>(0, (sum, value) => sum + value));
     for (var i = 0; i < count; i++) {
       final t = i / sampleRate;
       final progress = i / count;
