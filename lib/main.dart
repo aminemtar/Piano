@@ -237,6 +237,12 @@ class _PianoHomePageState extends State<PianoHomePage> {
 
   Future<void> _playAudio(Uint8List audio) => _playSource(BytesSource(audio));
 
+  Future<void> _playNote(int midi) async {
+    if (_audioDisposed) return;
+    final audio = _toneCache.putIfAbsent(midi, () => _makeTone(midi));
+    await _playAudio(audio);
+  }
+
   Future<Source> _loadDarbukaSample(String filename) async {
     final directory = await getTemporaryDirectory();
     final file = File('${directory.path}/piano_darbuka_$filename');
