@@ -944,19 +944,24 @@ class _PianoHomePageState extends State<PianoHomePage> {
             ),
           ]),
           const SizedBox(height: 16),
-          LayoutBuilder(builder: (context, constraints) {
-            final size = constraints.maxWidth < 390 ? 136.0 : 158.0;
-            return Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 12,
-              runSpacing: 14,
-              children: [
-                _darbukaPad('doum', 'DOUM', 'Bass · center', const Color(0xFFFFB45B), size),
-                _darbukaPad('tek', 'TEK', 'High · edge', const Color(0xFF62DDF2), size),
-                _darbukaPad('ka', 'KA', 'Crisp · rim', const Color(0xFF9BAEFF), size),
-              ],
-            );
-          }),
+          const SizedBox(height: 4),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 340),
+              child: const _DarbukaHeadSurface(),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'TAP THE SKIN  ·  CENTER: DOUM  ·  LEFT EDGE: TEK  ·  RIGHT EDGE: KA',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: .68),
+              fontSize: 8,
+              fontWeight: FontWeight.w900,
+              letterSpacing: .65,
+            ),
+          ),
           const SizedBox(height: 18),
           Text('12 separately recorded strikes are loaded into a native low-latency mixer. Fast hits can overlap instead of restarting and cutting off the previous sound.',
             textAlign: TextAlign.center,
@@ -979,15 +984,6 @@ class _PianoHomePageState extends State<PianoHomePage> {
       ),
     ],
   );
-
-  Widget _darbukaPad(String hit, String label, String subtitle, Color accent, double size) =>
-      _DarbukaPadButton(
-        size: size,
-        accent: accent,
-        label: label,
-        subtitle: subtitle,
-        onHit: () => _playDarbuka(hit),
-      );
 
   Widget _navItem(IconData icon, String label, int index) {
     final selected = selectedTab == index;
@@ -1025,407 +1021,249 @@ class _DarbukaTip extends StatelessWidget {
   ]);
 }
 
-class _DarbukaPadButton extends StatefulWidget {
-  final double size;
-  final Color accent;
-  final String label;
-  final String subtitle;
-  final VoidCallback onHit;
-
-  const _DarbukaPadButton({
-    required this.size,
-    required this.accent,
-    required this.label,
-    required this.subtitle,
-    required this.onHit,
-  });
+class _DarbukaHeadSurface extends StatefulWidget {
+  const _DarbukaHeadSurface();
 
   @override
-  State<_DarbukaPadButton> createState() => _DarbukaPadButtonState();
+  State<_DarbukaHeadSurface> createState() => _DarbukaHeadSurfaceState();
 }
 
-class _DarbukaPadButtonState extends State<_DarbukaPadButton> {
+class _DarbukaHeadSurfaceState extends State<_DarbukaHeadSurface> {
   bool _pressed = false;
+  String? _lastZone;
+
+  String _zoneAt(Offset point, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = math.min(size.width, size.height) / 2;
+    final distance = (point - center).distance / radius;
+    if (distance < .43) return 'doum';
+    return point.dx < center.dx ? 'tek' : 'ka';
+  }
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-    behavior: HitTestBehavior.opaque,
-    onTapDown: (_) {
-      setState(() => _pressed = true);
-      widget.onHit();
-    },
-    onTapUp: (_) => setState(() => _pressed = false),
-    onTapCancel: () => setState(() => _pressed = false),
-    child: AnimatedScale(
-      scale: _pressed ? .94 : 1,
-      duration: const Duration(milliseconds: 75),
-      curve: Curves.easeOutCubic,
-      child: SizedBox(
-        width: widget.size,
-        child: Column(children: [
-          Container(
-            width: widget.size - 12,
-            height: widget.size - 12,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(colors: [widget.accent.withValues(alpha: .95), widget.accent.withValues(alpha: .42), const Color(0xFF172544)]),
-              border: Border.all(color: widget.accent.withValues(alpha: .9), width: 3),
-              boxShadow: [BoxShadow(color: widget.accent.withValues(alpha: _pressed ? .5 : .2), blurRadius: _pressed ? 24 : 14, spreadRadius: _pressed ? 2 : 0)],
-            ),
-            child: Center(child: Container(
-              width: widget.size * .42,
-              height: widget.size * .42,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF101B36).withValues(alpha: .72),
-                border: Border.all(color: Colors.white.withValues(alpha: .25), width: 1.5),
+  Widget build(BuildContext context) => AspectRatio(
+    aspectRatio: 1,
+    child: LayoutBuilder(builder: (context, constraints) {
+      final size = Size(constraints.maxWidth, constraints.maxHeight);
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (details) {
+          final zone = _zoneAt(details.localPosition, size);
+          setState(() {
+            _pressed = true;
+            _lastZone = zone;
+          });
+          final state = context.findAncestorStateOfType<PianoHomePageState>();
+          state?._playDarbuka(zone);
+        },
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
+        child: AnimatedScale(
+          scale: _pressed ? .985 : 1,
+          duration: const Duration(milliseconds: 65),
+          curve: Curves.easeOut,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              CustomPaint(painter: _DarbukaHeadPainter()),
+              Align(
+                alignment: const Alignment(0, .02),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _lastZone == 'doum' ? 'DOUM' : 'DOUM',
+                      style: TextStyle(
+                        color: const Color(0xFF735A3D).withValues(alpha: .76),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2,
+                        shadows: const [Shadow(color: Colors.white70, blurRadius: 3)],
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'DRUM SKIN',
+                      style: TextStyle(
+                        color: const Color(0xFF8C7556).withValues(alpha: .68),
+                        fontSize: 7,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              child: Center(child: Text(widget.label, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 1))),
-            )),
+              Positioned(
+                left: 27,
+                top: size.height * .31,
+                child: _zoneLabel('TEK'),
+              ),
+              Positioned(
+                right: 27,
+                top: size.height * .31,
+                child: _zoneLabel('KA'),
+              ),
+              Positioned(
+                bottom: 23,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Text(
+                    'STRIKE ANYWHERE ON THE HEAD',
+                    style: TextStyle(
+                      color: const Color(0xFF806A4D).withValues(alpha: .7),
+                      fontSize: 7,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.1,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          Text(widget.subtitle, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.w700)),
-        ]),
+        ),
+      );
+    }),
+  );
+
+  Widget _zoneLabel(String label) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+    decoration: BoxDecoration(
+      color: const Color(0xFF4E4030).withValues(alpha: .12),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: const Color(0xFF8B7557).withValues(alpha: .28)),
+    ),
+    child: Text(
+      label,
+      style: const TextStyle(
+        color: Color(0xFF806A4D),
+        fontSize: 9,
+        fontWeight: FontWeight.w900,
+        letterSpacing: 1,
       ),
     ),
   );
 }
 
-class FullScreenPianoPage extends StatefulWidget {
-  final ValueChanged<int> onNote;
-  final VoidCallback onEarnXp;
-  final VoidCallback onComplete;
-  final String songTitle;
-  final List<int> notes;
-  final int bpm;
-
-  const FullScreenPianoPage({super.key, required this.onNote, required this.onEarnXp, required this.onComplete, required this.songTitle, required this.notes, required this.bpm});
-
+class _DarbukaHeadPainter extends CustomPainter {
   @override
-  State<FullScreenPianoPage> createState() => _FullScreenPianoPageState();
-}
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = math.min(size.width, size.height) * .47;
 
-class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
-  int activeMidi = -1;
-  final Set<int> pressedKeys = {};
-  int targetIndex = 0;
-  String lessonMode = 'idle';
-  String feedback = 'Choose Listen or Practice to begin';
-  bool demoPlaying = false;
-  bool completionReported = false;
-  Timer? _demoTimer;
-  Timer? _hintTimer;
+    canvas.drawCircle(
+      center.translate(0, radius * .045),
+      radius * .99,
+      Paint()
+        ..color = const Color(0xFF050B19).withValues(alpha: .55)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16),
+    );
 
-  bool get guided => lessonMode == 'practice';
-  bool get finished => targetIndex >= widget.notes.length;
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFFF4F6F7),
+            Color(0xFF697786),
+            Color(0xFFE6EBEF),
+            Color(0xFF596777),
+            Color(0xFFDDE3E8),
+          ],
+          stops: [0, .22, .48, .76, 1],
+        ).createShader(Rect.fromCircle(center: center, radius: radius)),
+    );
 
-  @override
-  void dispose() {
-    _demoTimer?.cancel();
-    _hintTimer?.cancel();
-    super.dispose();
-  }
+    canvas.drawCircle(
+      center,
+      radius * .925,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF8795A1), Color(0xFFE7ECEF), Color(0xFF596875)],
+        ).createShader(Rect.fromCircle(center: center, radius: radius * .925)),
+    );
 
-  void _play(int midi) {
-    widget.onNote(midi);
-    setState(() {
-      pressedKeys.add(midi);
-      activeMidi = midi;
-    });
-    if (lessonMode != 'practice' && lessonMode != 'challenge') return;
-    if (finished) return;
-    final expected = widget.notes[targetIndex];
-    if (midi == expected) {
-      widget.onEarnXp();
-      setState(() {
-        targetIndex++;
-        feedback = finished
-            ? 'Excellent! You completed the whole song.'
-            : 'Correct! Next: ${noteLabel(widget.notes[targetIndex])} (${solfegeLabel(widget.notes[targetIndex])}).';
-        if (finished) {
-          lessonMode = 'complete';
-          if (!completionReported) {
-            completionReported = true;
-            widget.onComplete();
-          }
-        }
-      });
-    } else {
-      setState(() => feedback = 'Try ${noteLabel(expected)} (${solfegeLabel(expected)}).');
-      if (guided) {
-        _hintTimer?.cancel();
-        _hintTimer = Timer(const Duration(milliseconds: 350), () {
-          if (mounted && lessonMode == 'practice') widget.onNote(expected);
-        });
-      }
+    final skinRadius = radius * .855;
+    canvas.drawCircle(
+      center,
+      skinRadius,
+      Paint()
+        ..shader = const RadialGradient(
+          center: Alignment(-.28, -.34),
+          radius: .95,
+          colors: [
+            Color(0xFFFFF4D9),
+            Color(0xFFE8D5B3),
+            Color(0xFFC9AE83),
+            Color(0xFFB6976C),
+          ],
+          stops: [0, .48, .82, 1],
+        ).createShader(Rect.fromCircle(center: center, radius: skinRadius)),
+    );
+
+    canvas.drawCircle(
+      center,
+      skinRadius * .985,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = radius * .012
+        ..color = const Color(0xFF8C704E).withValues(alpha: .65),
+    );
+
+    // Fine, irregular pores and faint concentric wear make the membrane read
+    // as stretched natural skin rather than a flat coloured touch button.
+    for (var i = 0; i < 150; i++) {
+      final angle = i * 2.399963229728653;
+      final fraction = .16 + ((i * 37) % 79) / 100;
+      final distance = skinRadius * fraction;
+      final point = Offset(
+        center.dx + math.cos(angle) * distance,
+        center.dy + math.sin(angle) * distance,
+      );
+      canvas.drawCircle(
+        point,
+        (i % 3 + 1) * .34,
+        Paint()..color = const Color(0xFF856B4B).withValues(alpha: .10 + (i % 4) * .025),
+      );
     }
-  }
 
-  void _releaseKey(int midi) {
-    if (!mounted) return;
-    setState(() {
-      pressedKeys.remove(midi);
-      activeMidi = pressedKeys.isEmpty ? -1 : pressedKeys.last;
-    });
-  }
-
-  void _startPractice({bool challenge = false}) {
-    _demoTimer?.cancel();
-    setState(() {
-      targetIndex = 0;
-      completionReported = false;
-      lessonMode = challenge ? 'challenge' : 'practice';
-      demoPlaying = false;
-      feedback = challenge
-          ? 'Play from memory. Keys will not be highlighted.'
-          : 'Follow the glowing key: ${noteLabel(widget.notes.first)} (${solfegeLabel(widget.notes.first)}).';
-      activeMidi = -1;
-    });
-    if (!challenge) {
-      widget.onNote(widget.notes.first);
-      setState(() => activeMidi = widget.notes.first);
+    for (var i = 0; i < 36; i++) {
+      final angle = (math.pi * 2 * i) / 36;
+      final point = Offset(
+        center.dx + math.cos(angle) * radius * .955,
+        center.dy + math.sin(angle) * radius * .955,
+      );
+      canvas.drawCircle(
+        point,
+        radius * .018,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [const Color(0xFFF8FAFC), const Color(0xFF596777)],
+          ).createShader(Rect.fromCircle(center: point, radius: radius * .018)),
+      );
+      canvas.drawCircle(
+        point,
+        radius * .006,
+        Paint()..color = const Color(0xFF44515D),
+      );
     }
-  }
 
-  void _listen() {
-    _demoTimer?.cancel();
-    _hintTimer?.cancel();
-    var index = 0;
-    final interval = Duration(milliseconds: (60000 / widget.bpm).round());
-    setState(() {
-      lessonMode = 'listen';
-      demoPlaying = true;
-      targetIndex = 0;
-      feedback = 'Listen to the melody and watch each key.';
-      activeMidi = -1;
-    });
-    void tick() {
-      if (!mounted || !demoPlaying || lessonMode != 'listen') return;
-      if (index >= widget.notes.length) {
-        setState(() {
-          demoPlaying = false;
-          activeMidi = -1;
-          lessonMode = 'ready';
-          feedback = 'Your turn! Choose Practice or play freely.';
-        });
-        return;
-      }
-      final midi = widget.notes[index++];
-      setState(() => activeMidi = midi);
-      widget.onNote(midi);
-      _demoTimer = Timer(interval, tick);
-    }
-    tick();
-  }
-
-  void _reset() {
-    _demoTimer?.cancel();
-    _hintTimer?.cancel();
-    setState(() {
-      targetIndex = 0;
-      lessonMode = 'idle';
-      demoPlaying = false;
-      activeMidi = -1;
-      feedback = 'Choose Listen or Practice to begin again.';
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0B1530),
-      body: SafeArea(
-        child: LayoutBuilder(builder: (context, constraints) {
-          final compact = constraints.maxHeight < 360;
-          final expected = finished ? null : widget.notes[targetIndex];
-          return Padding(
-            padding: EdgeInsets.fromLTRB(16, compact ? 3 : 8, 16, compact ? 5 : 9),
-            child: Column(children: [
-              Row(children: [
-                IconButton(visualDensity: VisualDensity.compact, onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.close_rounded, color: Colors.white), tooltip: 'Close piano'),
-                const Text('PIANO', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: 2)),
-                const SizedBox(width: 10),
-                Expanded(child: Text(widget.songTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600))),
-                if (expected != null && guided) Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(color: cobalt, borderRadius: BorderRadius.circular(10)),
-                  child: Text('NEXT: ${noteLabel(expected)}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900)),
-                ),
-              ]),
-              SizedBox(height: compact ? 2 : 5),
-              Row(children: [
-                _lessonButton(Icons.hearing_rounded, 'Listen', onPressed: demoPlaying ? null : _listen),
-                const SizedBox(width: 7),
-                _lessonButton(Icons.school_rounded, 'Practice', onPressed: () => _startPractice()),
-                const SizedBox(width: 7),
-                _lessonButton(Icons.psychology_alt_rounded, 'Memory', onPressed: () => _startPractice(challenge: true)),
-                const SizedBox(width: 7),
-                _lessonButton(Icons.refresh_rounded, 'Reset', onPressed: _reset),
-              ]),
-              SizedBox(height: compact ? 4 : 7),
-              Row(children: [
-                Expanded(child: Text(feedback, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600))),
-                const SizedBox(width: 10),
-                Text('$targetIndex/${widget.notes.length}', style: const TextStyle(color: Color(0xFF9FB5FF), fontSize: 10, fontWeight: FontWeight.w900)),
-              ]),
-              const SizedBox(height: 5),
-              _noteRoadmap(compact),
-              const SizedBox(height: 5),
-              ClipRRect(borderRadius: BorderRadius.circular(10), child: LinearProgressIndicator(value: targetIndex / widget.notes.length, minHeight: 4, backgroundColor: Colors.white12, color: cyan)),
-              SizedBox(height: compact ? 5 : 9),
-              Expanded(child: Container(
-                width: double.infinity,
-                padding: EdgeInsets.fromLTRB(8, compact ? 6 : 10, 8, compact ? 6 : 10),
-                decoration: BoxDecoration(color: const Color(0xFF172544), borderRadius: BorderRadius.circular(17), border: Border.all(color: const Color(0xFF34476E)), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .25), blurRadius: 24, offset: const Offset(0, 10))]),
-                child: LayoutBuilder(builder: (context, keyArea) {
-                  const whiteNotes = [60, 62, 64, 65, 67, 69, 71, 72, 74, 76, 77, 79, 81, 83];
-                  const blackOffsets = {61: 0, 63: 1, 66: 3, 68: 4, 70: 5, 73: 7, 75: 8, 78: 10, 80: 11, 82: 12};
-                  final whiteWidth = keyArea.maxWidth / whiteNotes.length;
-                  final blackHeight = keyArea.maxHeight * .59;
-                  return Stack(clipBehavior: Clip.none, children: [
-                    Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: whiteNotes.map((midi) {
-                      final selected = activeMidi == midi;
-                      final target = guided && expected == midi;
-                      return Expanded(child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTapDown: (_) => _play(midi),
-                        onTapUp: (_) => _releaseKey(midi),
-                        onTapCancel: () => _releaseKey(midi),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 75),
-                          curve: Curves.easeOutCubic,
-                          transform: Matrix4.translationValues(0, pressedKeys.contains(midi) ? 5 : 0, 0),
-                          margin: const EdgeInsets.symmetric(horizontal: 1),
-                          decoration: BoxDecoration(
-                            color: selected ? const Color(0xFF9DEBFF) : target ? const Color(0xFFDCE8FF) : const Color(0xFFFAFBFF),
-                            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
-                            border: Border.all(color: target ? cyan : const Color(0xFFD5DDED), width: target ? 2 : .8),
-                            boxShadow: target ? [const BoxShadow(color: cyan, blurRadius: 12)] : null,
-                          ),
-                          alignment: Alignment.bottomCenter,
-                          padding: EdgeInsets.only(bottom: compact ? 6 : 11),
-                          child: Stack(children: [
-                            Align(alignment: Alignment.bottomCenter, child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
-                              Text(noteNames[midi % 12], style: TextStyle(fontSize: compact ? 8 : 11, fontWeight: FontWeight.w900, color: selected || target ? cobalt : const Color(0xFF53617D))),
-                              Text(solfegeLabel(midi), style: TextStyle(fontSize: compact ? 6 : 8, color: const Color(0xFF8994AA))),
-                            ])),
-                          ]),
-                        ),
-                      ));
-                    }).toList()),
-                    ...blackOffsets.entries.map((entry) {
-                      final midi = entry.key;
-                      final selected = activeMidi == midi;
-                      final target = guided && expected == midi;
-                      return Positioned(
-                        left: (entry.value + 1) * whiteWidth - whiteWidth * .31,
-                        top: 0, width: whiteWidth * .62, height: blackHeight,
-                        child: GestureDetector(
-                          onTapDown: (_) => _play(midi),
-                          onTapUp: (_) => _releaseKey(midi),
-                          onTapCancel: () => _releaseKey(midi),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 75),
-                            curve: Curves.easeOutCubic,
-                            transform: Matrix4.translationValues(0, pressedKeys.contains(midi) ? 5 : 0, 0),
-                            decoration: BoxDecoration(
-                              color: selected ? cobalt : target ? const Color(0xFF315BFF) : const Color(0xFF101A31),
-                              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(7)),
-                              border: Border.all(color: target ? cyan : const Color(0xFF53617D), width: target ? 2 : .8),
-                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .35), blurRadius: 6, offset: const Offset(0, 3))],
-                            ),
-                            alignment: Alignment.bottomCenter,
-                            padding: EdgeInsets.only(bottom: compact ? 5 : 8),
-                            child: Stack(children: [
-                              Align(alignment: Alignment.bottomCenter, child: Text(noteNames[midi % 12], style: TextStyle(color: Colors.white, fontSize: compact ? 6 : 8, fontWeight: FontWeight.w800))),
-                            ]),
-                          ),
-                        ),
-                      );
-                    }),
-                  ]);
-                }),
-              )),
-              SizedBox(height: compact ? 3 : 6),
-              const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Text('C4 – B5  •  2 OCTAVES  •  PRESS & HOLD TO PLAY', style: TextStyle(color: Colors.white38, fontSize: 8, fontWeight: FontWeight.w700, letterSpacing: .4)),
-              ]),
-            ]),
-          );
-        }),
-      ),
+    canvas.drawCircle(
+      center.translate(-radius * .2, -radius * .28),
+      radius * .55,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [Colors.white.withValues(alpha: .19), Colors.white.withValues(alpha: 0)],
+        ).createShader(Rect.fromCircle(center: center, radius: radius * .55)),
     );
   }
 
-  Widget _noteRoadmap(bool compact) {
-    final start = math.max(0, targetIndex - 2);
-    final end = math.min(widget.notes.length, targetIndex + 6);
-    return SizedBox(
-      height: compact ? 27 : 34,
-      child: Row(children: [
-        const Padding(
-          padding: EdgeInsets.only(right: 7),
-          child: Icon(Icons.route_rounded, color: Color(0xFF8FA8E8), size: 14),
-        ),
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: List.generate(end - start, (offset) {
-              final index = start + offset;
-              final midi = widget.notes[index];
-              final isDone = index < targetIndex;
-              final isCurrent = index == targetIndex && (guided || lessonMode == 'challenge');
-              return Container(
-                width: compact ? 31 : 37,
-                height: compact ? 24 : 30,
-                margin: const EdgeInsets.only(right: 4),
-                decoration: BoxDecoration(
-                  color: isCurrent ? cobalt : isDone ? const Color(0xFF1D806F) : const Color(0xFF223454),
-                  borderRadius: BorderRadius.circular(7),
-                  border: Border.all(color: isCurrent ? cyan : isDone ? const Color(0xFF3AC6A2) : const Color(0xFF405477), width: isCurrent ? 1.5 : .7),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  noteNames[midi % 12],
-                  style: TextStyle(color: Colors.white, fontSize: compact ? 8 : 9, fontWeight: FontWeight.w900),
-                ),
-              );
-            })),
-          ),
-        ),
-        if (targetIndex < widget.notes.length)
-          Padding(
-            padding: const EdgeInsets.only(left: 6),
-            child: Text(
-              solfegeLabel(widget.notes[targetIndex]),
-              style: const TextStyle(color: cyan, fontSize: 9, fontWeight: FontWeight.w900),
-            ),
-          )
-        else
-          const Padding(
-            padding: EdgeInsets.only(left: 6),
-            child: Icon(Icons.check_circle_rounded, color: Color(0xFF3AC6A2), size: 16),
-          ),
-      ]),
-    );
-  }
-
-  Widget _lessonButton(IconData icon, String label, {VoidCallback? onPressed}) {
-    final selected = (label == 'Practice' && lessonMode == 'practice') || (label == 'Memory' && lessonMode == 'challenge') || (label == 'Listen' && lessonMode == 'listen');
-    return Expanded(child: SizedBox(
-      height: 34,
-      child: ElevatedButton.icon(
-        onPressed: onPressed, icon: Icon(icon, size: 13),
-        label: Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800)),
-        style: ElevatedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 5), elevation: 0,
-          backgroundColor: selected ? cobalt : const Color(0xFF263758),
-          foregroundColor: Colors.white,
-          disabledBackgroundColor: const Color(0xFF1D2B47),
-          disabledForegroundColor: Colors.white38,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9), side: BorderSide(color: selected ? cyan : const Color(0xFF405477))),
-        ),
-      ),
-    ));
-  }
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
