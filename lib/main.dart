@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() => runApp(const PianoLearnApp());
@@ -107,7 +109,8 @@ class _PianoHomePageState extends State<PianoHomePage> {
   final List<Future<void>> _voiceQueues =
       List<Future<void>>.filled(_audioVoiceCount, Future<void>.value());
   final Map<int, Uint8List> _toneCache = {};
-  final Map<String, Uint8List> _darbukaCache = {};
+  final Map<String, Future<Source>> _darbukaSampleCache = {};
+  final Map<String, int> _darbukaRoundRobin = {};
   int _nextVoice = 0;
   bool _audioDisposed = false;
   Timer? _demoTimer;
@@ -210,7 +213,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
     return data.buffer.asUint8List();
   }
 
-  Future<void> _playAudio(Uint8List audio) async {
+  Future<void> _playSource(Source source) async {
     if (_audioDisposed) return;
     final voiceIndex = _nextVoice;
     _nextVoice = (_nextVoice + 1) % _audioVoiceCount;
@@ -220,7 +223,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
       if (_audioDisposed) return;
       await player.stop();
       if (_audioDisposed) return;
-      await player.play(BytesSource(audio));
+      await player.play(source);
     });
     _voiceQueues[voiceIndex] = playbackTask;
     try {
@@ -232,54 +235,55 @@ class _PianoHomePageState extends State<PianoHomePage> {
     }
   }
 
-  Future<void> _playNote(int midi) {
-    final tone = _toneCache.putIfAbsent(midi, () => _makeTone(midi));
-    return _playAudio(tone);
-  }
+  Future<void> _playAudio(Uint8List audio) => _playSource(BytesSource(audio));
 
-  Uint8List _makeDarbukaHit(String hit) {
-    const sampleRate = 22050;
-    final durationMs = hit == 'doum' ? 430 : 260;
-    final count = sampleRate * durationMs ~/ 1000;
-    final data = ByteData(44 + count * 2);
-    void writeText(int offset, String value) {
-      for (var i = 0; i < value.length; i++) {
-        data.setUint8(offset + i, value.codeUnitAt(i));
+  Future<Source> _loadDarbukaSample(String filename) async {
+    final directory = await getTemporaryDirectory();
+    final file = File('${directory.path}/piano_darbuka_$filename');
+    if (!await file.exists() || await file.length() == 0) {
+      final client = HttpClient();
+      try {
+        final request = await client.getUrl(Uri.parse(
+          'https://raw.githubusercontent.com/freepats/world-percussion/main/samples/Darbuka/$filename',
+        ));
+        final response = await request.close();
+        if (response.statusCode != HttpStatus.ok) {
+          throw HttpException('Darbuka sample download failed: ${response.statusCode}');
+        }
+        await response.pipe(file.openWrite());
+      } finally {
+        client.close(force: true);
       }
     }
-    writeText(0, 'RIFF');
-    data.setUint32(4, 36 + count * 2, Endian.little);
-    writeText(8, 'WAVE');
-    writeText(12, 'fmt ');
-    data.setUint32(16, 16, Endian.little);
-    data.setUint16(20, 1, Endian.little);
-    data.setUint16(22, 1, Endian.little);
-    data.setUint32(24, sampleRate, Endian.little);
-    data.setUint32(28, sampleRate * 2, Endian.little);
-    data.setUint16(32, 2, Endian.little);
-    data.setUint16(34, 16, Endian.little);
-    writeText(36, 'data');
-    data.setUint32(40, count * 2, Endian.little);
-
-    final random = math.Random(hit.codeUnits.fold<int>(0, (sum, value) => sum + value));
-    for (var i = 0; i < count; i++) {
-      final t = i / sampleRate;
-      final progress = i / count;
-      final envelope = math.pow(1 - progress, hit == 'doum' ? 2.8 : 4.8).toDouble();
-      final noise = random.nextDouble() * 2 - 1;
-      final sample = switch (hit) {
-        'doum' => (math.sin(2 * math.pi * (105 - 55 * progress) * t) * .82 + noise * .18) * envelope,
-        'tek' => (math.sin(2 * math.pi * 1850 * t) * .48 + math.sin(2 * math.pi * 2850 * t) * .24 + noise * .42) * envelope,
-        _ => (math.sin(2 * math.pi * 1250 * t) * .34 + noise * .68) * envelope,
-      };
-      data.setInt16(44 + i * 2, (sample.clamp(-1.0, 1.0) * 32767).round(), Endian.little);
-    }
-    return data.buffer.asUint8List();
+    return DeviceFileSource(file.path);
   }
 
-  Future<void> _playDarbuka(String hit) {
-    final audio = _darbukaCache.putIfAbsent(hit, () => _makeDarbukaHit(hit));
-    return _playAudio(audio);
+  Future<void> _playDarbuka(String hit) async {
+    const samples = <String, List<String>>{
+      'doum': [
+        'doom_01_01.flac', 'doom_01_04.flac', 'doom_01_07.flac', 'doom_01_10.flac',
+      ],
+      'tek': [
+        'tak_02_01.flac', 'tak_02_03.flac', 'tak_02_05.flac', 'tak_02_07.flac',
+      ],
+      'ka': [
+        'pa_03_01.flac', 'pa_03_03.flac', 'pa_03_05.flac', 'pa_03_07.flac',
+      ],
+    };
+    final variants = samples[hit];
+    if (variants == null) return;
+    final index = _darbukaRoundRobin[hit] ?? 0;
+    _darbukaRoundRobin[hit] = (index + 1) % variants.length;
+    final filename = variants[index];
+    try {
+      final source = await (_darbukaSampleCache[filename] ??=
+          _loadDarbukaSample(filename));
+      await _playSource(source);
+    } catch (_) {
+      if (mounted && !_audioDisposed) {
+        setState(() => feedback = 'Connect to the internet once to load the darbuka sounds.');
+      }
+    }
   }
 
   void _pressKey(int midi) {
