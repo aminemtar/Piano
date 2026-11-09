@@ -107,6 +107,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
   final List<Future<void>> _voiceQueues =
       List<Future<void>>.filled(_audioVoiceCount, Future<void>.value());
   final Map<int, Uint8List> _toneCache = {};
+  final Map<String, Uint8List> _darbukaCache = {};
   int _nextVoice = 0;
   bool _audioDisposed = false;
   Timer? _demoTimer;
@@ -209,25 +210,19 @@ class _PianoHomePageState extends State<PianoHomePage> {
     return data.buffer.asUint8List();
   }
 
-  Future<void> _playNote(int midi) async {
+  Future<void> _playAudio(Uint8List audio) async {
     if (_audioDisposed) return;
-
-    // Reuse a small, bounded set of voices instead of allocating an AudioPlayer
-    // for every key press. Cache generated PCM/WAV data for repeat notes.
     final voiceIndex = _nextVoice;
     _nextVoice = (_nextVoice + 1) % _audioVoiceCount;
     final player = _players[voiceIndex] ??= AudioPlayer();
-    final tone = _toneCache.putIfAbsent(midi, () => _makeTone(midi));
-
     final previousTask = _voiceQueues[voiceIndex];
     final playbackTask = previousTask.catchError((_) {}).then((_) async {
       if (_audioDisposed) return;
       await player.stop();
       if (_audioDisposed) return;
-      await player.play(BytesSource(tone));
+      await player.play(BytesSource(audio));
     });
     _voiceQueues[voiceIndex] = playbackTask;
-
     try {
       await playbackTask;
     } catch (_) {
@@ -235,6 +230,56 @@ class _PianoHomePageState extends State<PianoHomePage> {
         setState(() => feedback = 'Audio could not start. Please try again.');
       }
     }
+  }
+
+  Future<void> _playNote(int midi) {
+    final tone = _toneCache.putIfAbsent(midi, () => _makeTone(midi));
+    return _playAudio(tone);
+  }
+
+  Uint8List _makeDarbukaHit(String hit) {
+    const sampleRate = 22050;
+    final durationMs = hit == 'doum' ? 430 : 260;
+    final count = sampleRate * durationMs ~/ 1000;
+    final data = ByteData(44 + count * 2);
+    void writeText(int offset, String value) {
+      for (var i = 0; i < value.length; i++) {
+        data.setUint8(offset + i, value.codeUnitAt(i));
+      }
+    }
+    writeText(0, 'RIFF');
+    data.setUint32(4, 36 + count * 2, Endian.little);
+    writeText(8, 'WAVE');
+    writeText(12, 'fmt ');
+    data.setUint32(16, 16, Endian.little);
+    data.setUint16(20, 1, Endian.little);
+    data.setUint16(22, 1, Endian.little);
+    data.setUint32(24, sampleRate, Endian.little);
+    data.setUint32(28, sampleRate * 2, Endian.little);
+    data.setUint16(32, 2, Endian.little);
+    data.setUint16(34, 16, Endian.little);
+    writeText(36, 'data');
+    data.setUint32(40, count * 2, Endian.little);
+
+    final random = math.Random(hit.codeUnits.fold(0, (sum, value) => sum + value));
+    for (var i = 0; i < count; i++) {
+      final t = i / sampleRate;
+      final progress = i / count;
+      final envelope = math.pow(1 - progress, hit == 'doum' ? 2.8 : 4.8).toDouble();
+      final noise = random.nextDouble() * 2 - 1;
+      final sample = switch (hit) {
+        'doum' => (math.sin(2 * math.pi * (105 - 55 * progress) * t) * .82 + noise * .18) * envelope,
+        'tek' => (math.sin(2 * math.pi * 1850 * t) * .48 + math.sin(2 * math.pi * 2850 * t) * .24 + noise * .42) * envelope,
+        _ => (math.sin(2 * math.pi * 1250 * t) * .34 + noise * .68) * envelope,
+      };
+      data.setInt16(44 + i * 2, (sample.clamp(-1.0, 1.0) * 32767).round(), Endian.little);
+    }
+    return data.buffer.asUint8List();
+  }
+
+  Future<void> _playDarbuka(String hit) {
+    final audio = _darbukaCache.putIfAbsent(hit, () => _makeDarbukaHit(hit));
+    return _playAudio(audio);
   }
 
   void _pressKey(int midi) {
@@ -413,7 +458,12 @@ class _PianoHomePageState extends State<PianoHomePage> {
           children: [
             _topBar(),
             Expanded(
-              child: selectedTab == 0 ? _learnPage() : selectedTab == 1 ? _libraryPage() : _progressPage(),
+              child: switch (selectedTab) {
+                0 => _learnPage(),
+                1 => _libraryPage(),
+                2 => _progressPage(),
+                _ => _darbukaPage(),
+              },
             ),
             _bottomNav(),
           ],
@@ -758,8 +808,76 @@ class _PianoHomePageState extends State<PianoHomePage> {
       _navItem(Icons.home_rounded, 'Learn', 0),
       _navItem(Icons.library_music_rounded, 'Songs', 1),
       _navItem(Icons.insights_rounded, 'Progress', 2),
+      _navItem(Icons.album_rounded, 'Darbuka', 3),
     ]),
   );
+
+  Widget _darbukaPage() => ListView(
+    padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+    children: [
+      const Text('Darbuka', style: TextStyle(fontSize: 27, fontWeight: FontWeight.w900, color: navy, letterSpacing: -.7)),
+      const SizedBox(height: 5),
+      const Text('Play the rhythms with your fingertips.', style: TextStyle(fontSize: 12, color: Color(0xFF8994AA))),
+      const SizedBox(height: 18),
+      Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF17264A), Color(0xFF263E70)]),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Column(children: [
+          Row(children: [
+            const Icon(Icons.graphic_eq_rounded, color: cyan, size: 19),
+            const SizedBox(width: 8),
+            const Text('PERCUSSION STUDIO', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.4)),
+            const Spacer(),
+            Text('3 SOUNDS', style: TextStyle(color: Colors.white.withValues(alpha: .55), fontSize: 9, fontWeight: FontWeight.w800)),
+          ]),
+          const SizedBox(height: 22),
+          LayoutBuilder(builder: (context, constraints) {
+            final size = constraints.maxWidth < 390 ? 136.0 : 158.0;
+            return Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 12,
+              runSpacing: 14,
+              children: [
+                _darbukaPad('doum', 'DOUM', 'Bass · center', const Color(0xFFFFB45B), size),
+                _darbukaPad('tek', 'TEK', 'High · edge', const Color(0xFF62DDF2), size),
+                _darbukaPad('ka', 'KA', 'Crisp · rim', const Color(0xFF9BAEFF), size),
+              ],
+            );
+          }),
+          const SizedBox(height: 18),
+          Text('Tap quickly or hold a pad to play. Mix the three strikes to create your own rhythm.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white.withValues(alpha: .68), fontSize: 10, height: 1.5)),
+        ]),
+      ),
+      const SizedBox(height: 16),
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE8EDF7))),
+        child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Darbuka basics', style: TextStyle(color: navy, fontWeight: FontWeight.w900, fontSize: 15)),
+          SizedBox(height: 10),
+          _DarbukaTip(label: 'DOUM', description: 'Strike the middle of the drum head for a deep bass tone.'),
+          SizedBox(height: 8),
+          _DarbukaTip(label: 'TEK', description: 'Strike near the edge for a bright, ringing tone.'),
+          SizedBox(height: 8),
+          _DarbukaTip(label: 'KA', description: 'Use a lighter rim strike for a crisp accent.'),
+        ]),
+      ),
+    ],
+  );
+
+  Widget _darbukaPad(String hit, String label, String subtitle, Color accent, double size) =>
+      _DarbukaPadButton(
+        size: size,
+        accent: accent,
+        label: label,
+        subtitle: subtitle,
+        onHit: () => _playDarbuka(hit),
+      );
 
   Widget _navItem(IconData icon, String label, int index) {
     final selected = selectedTab == index;
@@ -774,6 +892,91 @@ class _PianoHomePageState extends State<PianoHomePage> {
   }
 }
 
+
+class _DarbukaTip extends StatelessWidget {
+  final String label;
+  final String description;
+  const _DarbukaTip({required this.label, required this.description});
+
+  @override
+  Widget build(BuildContext context) => Row(children: [
+    Container(
+      width: 48,
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      decoration: BoxDecoration(color: const Color(0xFFEAF0FF), borderRadius: BorderRadius.circular(8)),
+      alignment: Alignment.center,
+      child: Text(label, style: const TextStyle(color: cobalt, fontSize: 10, fontWeight: FontWeight.w900)),
+    ),
+    const SizedBox(width: 10),
+    Expanded(child: Text(description, style: const TextStyle(color: Color(0xFF65718A), fontSize: 11, height: 1.35))),
+  ]);
+}
+
+class _DarbukaPadButton extends StatefulWidget {
+  final double size;
+  final Color accent;
+  final String label;
+  final String subtitle;
+  final VoidCallback onHit;
+
+  const _DarbukaPadButton({
+    required this.size,
+    required this.accent,
+    required this.label,
+    required this.subtitle,
+    required this.onHit,
+  });
+
+  @override
+  State<_DarbukaPadButton> createState() => _DarbukaPadButtonState();
+}
+
+class _DarbukaPadButtonState extends State<_DarbukaPadButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onTapDown: (_) {
+      setState(() => _pressed = true);
+      widget.onHit();
+    },
+    onTapUp: (_) => setState(() => _pressed = false),
+    onTapCancel: () => setState(() => _pressed = false),
+    child: AnimatedScale(
+      scale: _pressed ? .94 : 1,
+      duration: const Duration(milliseconds: 75),
+      curve: Curves.easeOutCubic,
+      child: SizedBox(
+        width: widget.size,
+        child: Column(children: [
+          Container(
+            width: widget.size - 12,
+            height: widget.size - 12,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(colors: [widget.accent.withValues(alpha: .95), widget.accent.withValues(alpha: .42), const Color(0xFF172544)]),
+              border: Border.all(color: widget.accent.withValues(alpha: .9), width: 3),
+              boxShadow: [BoxShadow(color: widget.accent.withValues(alpha: _pressed ? .5 : .2), blurRadius: _pressed ? 24 : 14, spreadRadius: _pressed ? 2 : 0)],
+            ),
+            child: Center(child: Container(
+              width: widget.size * .42,
+              height: widget.size * .42,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF101B36).withValues(alpha: .72),
+                border: Border.all(color: Colors.white.withValues(alpha: .25), width: 1.5),
+              ),
+              child: Center(child: Text(widget.label, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 1))),
+            )),
+          ),
+          const SizedBox(height: 8),
+          Text(widget.subtitle, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.w700)),
+        ]),
+      ),
+    ),
+  );
+}
 
 class FullScreenPianoPage extends StatefulWidget {
   final ValueChanged<int> onNote;
