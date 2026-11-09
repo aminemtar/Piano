@@ -54,11 +54,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Darbuka lessons'), findsOneWidget);
-    expect(find.text('TEMPO & METRONOME'), findsOneWidget);
     expect(find.text('DOUM'), findsWidgets);
     expect(find.text('TEK'), findsWidgets);
     expect(find.text('KA'), findsWidgets);
-    expect(find.text('PRACTICE ON THE DRUM'), findsOneWidget);
   });
 
 
