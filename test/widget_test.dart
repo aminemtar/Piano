@@ -15,6 +15,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('piano.'), findsOneWidget);
+    expect(find.text('Piano'), findsOneWidget);
+    expect(find.text('Darbuka'), findsOneWidget);
     expect(find.text('Your piano'), findsOneWidget);
     expect(find.text('Do'), findsWidgets);
 
@@ -51,11 +53,12 @@ void main() {
     await tester.tap(find.text('Darbuka'));
     await tester.pumpAndSettle();
 
-    expect(find.text('PERCUSSION STUDIO'), findsOneWidget);
+    expect(find.text('Darbuka lessons'), findsOneWidget);
+    expect(find.text('TEMPO & METRONOME'), findsOneWidget);
     expect(find.text('DOUM'), findsWidgets);
     expect(find.text('TEK'), findsWidgets);
     expect(find.text('KA'), findsWidgets);
-    expect(find.text('Darbuka basics'), findsOneWidget);
+    expect(find.text('PRACTICE ON THE DRUM'), findsOneWidget);
   });
 
 
