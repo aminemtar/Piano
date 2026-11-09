@@ -285,6 +285,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
   bool _darbukaPreparing = false;
   bool _darbukaReady = false;
   bool _soloudInitialized = false;
+  Future<void>? _soloudInitFuture;
   int _nextVoice = 0;
   bool _audioDisposed = false;
   Timer? _demoTimer;
@@ -349,7 +350,15 @@ class _PianoHomePageState extends State<PianoHomePage> {
       );
     }
     if (_soloudInitialized) {
-      cleanupTasks.add(_disposeDarbukaAudio());
+      cleanupTasks.add(Future<void>(() async {
+        final pianoPlayer = _pianoSoundFontPlayer;
+        if (pianoPlayer != null) {
+          try {
+            await pianoPlayer.allNotesOff();
+          } catch (_) {}
+        }
+        await _disposeDarbukaAudio();
+      }));
     }
     unawaited(Future.wait(cleanupTasks)
         .then<void>((_) {}, onError: (Object error, StackTrace stackTrace) {}));
@@ -357,6 +366,32 @@ class _PianoHomePageState extends State<PianoHomePage> {
     super.dispose();
   }
 
+
+
+  Future<void> _ensureSoLoudInitialized() async {
+    if (_soloudInitialized) return;
+    final pending = _soloudInitFuture;
+    if (pending != null) {
+      await pending;
+      return;
+    }
+    final initialization = SoLoud.instance.init(
+      sampleRate: 44100,
+      bufferSize: 1024,
+      channels: Channels.stereo,
+      lowLatency: true,
+    ).then((_) {
+      _soloudInitialized = true;
+      SoLoud.instance.setMaxActiveVoiceCount(48);
+    });
+    _soloudInitFuture = initialization;
+    try {
+      await initialization;
+    } catch (_) {
+      _soloudInitFuture = null;
+      rethrow;
+    }
+  }
 
   Future<File> _downloadPianoSoundFontArchive() async {
     final directory = await getApplicationSupportDirectory();
@@ -389,16 +424,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
     _pianoSoundFontPreparing = true;
     if (mounted) setState(() => feedback = 'Loading sampled acoustic piano…');
     try {
-      if (!_soloudInitialized) {
-        await SoLoud.instance.init(
-          sampleRate: 44100,
-          bufferSize: 1024,
-          channels: Channels.stereo,
-          lowLatency: true,
-        );
-        _soloudInitialized = true;
-        SoLoud.instance.setMaxActiveVoiceCount(48);
-      }
+      await _ensureSoLoudInitialized();
       final archive = await _downloadPianoSoundFontArchive();
       if (_audioDisposed) return;
       final soundFont = await SoundFontFile.fromFile(archive.path);
@@ -545,16 +571,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
     // platform players. Keep the buffer small but conservative for mid-range
     // Android devices to reduce latency without inviting audio underruns.
     try {
-      if (!_soloudInitialized) {
-        await SoLoud.instance.init(
-          sampleRate: 44100,
-          bufferSize: 1024,
-          channels: Channels.stereo,
-          lowLatency: true,
-        );
-        _soloudInitialized = true;
-        SoLoud.instance.setMaxActiveVoiceCount(48);
-      }
+      await _ensureSoLoudInitialized();
 
       const files = <String, List<String>>{
         'doum': [
@@ -801,6 +818,11 @@ class _PianoHomePageState extends State<PianoHomePage> {
     await Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => FullScreenPianoPage(
         onNote: _playNote,
+        onNoteOff: (midi) async {
+          if (_pianoSoundFontReady && _pianoSoundFontPlayer != null) {
+            await _pianoSoundFontPlayer.noteOff(midi);
+          }
+        },
         onEarnXp: () {
           setState(() => xp += 5);
           _scheduleProgressSave();
@@ -2163,6 +2185,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
 
 class FullScreenPianoPage extends StatefulWidget {
   final Future<void> Function(int) onNote;
+  final Future<void> Function(int) onNoteOff;
   final VoidCallback onEarnXp;
   final VoidCallback onComplete;
   final String songTitle;
@@ -2172,6 +2195,7 @@ class FullScreenPianoPage extends StatefulWidget {
   const FullScreenPianoPage({
     super.key,
     required this.onNote,
+    required this.onNoteOff,
     required this.onEarnXp,
     required this.onComplete,
     required this.songTitle,
@@ -2217,6 +2241,10 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
     });
     widget.onEarnXp();
     if (_completed) widget.onComplete();
+  }
+
+  void _releaseKey(int midi) {
+    widget.onNoteOff(midi);
   }
 
   @override
@@ -2269,7 +2297,9 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
                                   .map((midi) => Expanded(
                                         child: GestureDetector(
                                           behavior: HitTestBehavior.opaque,
-                                          onTap: () => _playKey(midi),
+                                          onTapDown: (_) => _playKey(midi),
+                                          onTapUp: (_) => _releaseKey(midi),
+                                          onTapCancel: () => _releaseKey(midi),
                                           child: Container(
                                             margin: const EdgeInsets.symmetric(
                                                 horizontal: 2),
@@ -2311,7 +2341,9 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
                               width: whiteWidth * .58,
                               height: keyboardHeight * .58,
                               child: GestureDetector(
-                                onTap: () => _playKey(midi),
+                                onTapDown: (_) => _playKey(midi),
+                                onTapUp: (_) => _releaseKey(midi),
+                                onTapCancel: () => _releaseKey(midi),
                                 child: Container(
                                   decoration: BoxDecoration(
                                     color: highlighted
