@@ -5,7 +5,7 @@ A Flutter piano-learning game for Android and iOS. Start with the seven musical 
 ## What is included
 
 - Two-octave interactive piano (C4–B5), including black keys.
-- A dedicated darbuka percussion studio using real recorded darbuka strikes: Doum, Tek, and Ka, with round-robin sample variations.
+- A dedicated darbuka percussion studio using real recorded darbuka strikes: Doum, Tek, and Ka, with audio pools preloaded when the instrument screen opens for responsive repeated playing.
 - Do/Re/Mi/Fa/Sol/La/Si labels alongside note letters.
 - Locally synthesized piano-like tones (no streaming or external sound service).
 - A bounded six-voice audio pool shared by piano and percussion. Piano notes are generated locally; recorded darbuka samples are downloaded once and cached on-device.
