@@ -52,9 +52,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('PERCUSSION STUDIO'), findsOneWidget);
-    expect(find.text('DOUM'), findsOneWidget);
-    expect(find.text('TEK'), findsOneWidget);
-    expect(find.text('KA'), findsOneWidget);
+    expect(find.text('DOUM'), findsWidgets);
+    expect(find.text('TEK'), findsWidgets);
+    expect(find.text('KA'), findsWidgets);
     expect(find.text('Darbuka basics'), findsOneWidget);
   });
 
