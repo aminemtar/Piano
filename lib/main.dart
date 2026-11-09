@@ -538,6 +538,22 @@ class _PianoHomePageState extends State<PianoHomePage> {
     await _playAudio(audio);
   }
 
+
+  Future<void> _releasePianoNote(int midi) async {
+    final player = _pianoSoundFontPlayer;
+    if (!_pianoSoundFontReady || player == null) return;
+    try {
+      await player.noteOff(midi);
+    } catch (_) {}
+  }
+
+  Future<void> _playNoteBriefly(int midi, Duration duration) async {
+    await _playNote(midi);
+    if (_pianoSoundFontReady) {
+      Timer(duration, () => unawaited(_releasePianoNote(midi)));
+    }
+  }
+
   Future<String> _downloadDarbukaSample(String filename) async {
     final directory = await getTemporaryDirectory();
     final file = File('${directory.path}/piano_darbuka_$filename');
@@ -688,11 +704,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
   }
 
   void _releaseKey(int midi) {
-    if (_pianoSoundFontReady && _pianoSoundFontPlayer != null) {
-      try {
-        unawaited(_pianoSoundFontPlayer.noteOff(midi));
-      } catch (_) {}
-    }
+    unawaited(_releasePianoNote(midi));
     if (!mounted) return;
     setState(() {
       pressedKeys.remove(midi);
@@ -719,7 +731,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
       if (mode == 'practice') {
         _hintTimer?.cancel();
         _hintTimer = Timer(const Duration(milliseconds: 350), () {
-          if (mounted && mode == 'practice') _playNote(expected);
+          if (mounted && mode == 'practice') _playNoteBriefly(expected, const Duration(milliseconds: 360));
         });
       }
     }
@@ -761,7 +773,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
       }
       final midi = song.notes[i++];
       setState(() => activeMidi = midi);
-      await _playNote(midi);
+      await _playNoteBriefly(midi, Duration(milliseconds: (interval.inMilliseconds * .82).round()));
       if (mounted && mode == 'watch' && isPlayingDemo) {
         _demoTimer = Timer(interval, tick);
       }
@@ -783,7 +795,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
     });
     if (!challenge) {
       _hintTimer = Timer(const Duration(milliseconds: 450), () {
-        if (mounted && mode == 'practice') _playNote(song.notes.first);
+        if (mounted && mode == 'practice') _playNoteBriefly(song.notes.first, const Duration(milliseconds: 360));
       });
     }
   }
@@ -820,7 +832,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
         onNote: _playNote,
         onNoteOff: (midi) async {
           if (_pianoSoundFontReady && _pianoSoundFontPlayer != null) {
-            await _pianoSoundFontPlayer.noteOff(midi);
+            await _releasePianoNote(midi);
           }
         },
         onEarnXp: () {
@@ -2227,8 +2239,10 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
   static const _blackNotes = [61, 63, 66, 68, 70, 73, 75, 78, 80, 82];
   int _targetIndex = 0;
   bool _completed = false;
+  final Set<int> _pressedKeys = {};
 
   void _playKey(int midi) {
+    setState(() => _pressedKeys.add(midi));
     widget.onNote(midi);
     if (_completed ||
         _targetIndex >= widget.notes.length ||
@@ -2244,6 +2258,7 @@ class _FullScreenPianoPageState extends State<FullScreenPianoPage> {
   }
 
   void _releaseKey(int midi) {
+    if (mounted) setState(() => _pressedKeys.remove(midi));
     widget.onNoteOff(midi);
   }
 
