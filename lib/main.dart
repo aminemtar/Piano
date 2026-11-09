@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:soundfont_kit/soundfont_kit.dart';
 
 void main() => runApp(const PianoLearnApp());
 
@@ -275,6 +276,10 @@ class _PianoHomePageState extends State<PianoHomePage> {
   final List<Future<void>> _voiceQueues =
       List<Future<void>>.filled(_audioVoiceCount, Future<void>.value());
   final Map<int, Uint8List> _toneCache = {};
+  dynamic _pianoSoundFontPlayer;
+  dynamic _pianoSoundFontPreset;
+  bool _pianoSoundFontPreparing = false;
+  bool _pianoSoundFontReady = false;
   final Map<String, List<AudioSource>> _darbukaSources = {};
   final math.Random _darbukaRandom = math.Random();
   bool _darbukaPreparing = false;
@@ -293,6 +298,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
   void initState() {
     super.initState();
     _loadProgress();
+    unawaited(_preparePianoSoundFont());
   }
 
   Future<void> _loadProgress() async {
@@ -349,6 +355,82 @@ class _PianoHomePageState extends State<PianoHomePage> {
         .then<void>((_) {}, onError: (Object error, StackTrace stackTrace) {}));
     _toneCache.clear();
     super.dispose();
+  }
+
+
+  Future<File> _downloadPianoSoundFontArchive() async {
+    final directory = await getApplicationSupportDirectory();
+    final file = File('${directory.path}/upright-piano-kw-main.zip');
+    if (await file.exists() && await file.length() > 1000000) return file;
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    try {
+      final request = await client.getUrl(Uri.parse(
+        'https://codeload.github.com/freepats/upright-piano-KW/zip/refs/heads/main',
+      ));
+      final response = await request.close();
+      if (response.statusCode != HttpStatus.ok) {
+        throw HttpException('Piano sample download failed: ${response.statusCode}');
+      }
+      final sink = file.openWrite();
+      await response.pipe(sink);
+      if (await file.length() < 1000000) {
+        await file.delete();
+        throw const FormatException('Piano sample archive is incomplete.');
+      }
+      return file;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<void> _preparePianoSoundFont() async {
+    if (_pianoSoundFontReady || _pianoSoundFontPreparing || _audioDisposed) return;
+    _pianoSoundFontPreparing = true;
+    if (mounted) setState(() => feedback = 'Loading sampled acoustic piano…');
+    try {
+      if (!_soloudInitialized) {
+        await SoLoud.instance.init(
+          sampleRate: 44100,
+          bufferSize: 1024,
+          channels: Channels.stereo,
+          lowLatency: true,
+        );
+        _soloudInitialized = true;
+        SoLoud.instance.setMaxActiveVoiceCount(48);
+      }
+      final archive = await _downloadPianoSoundFontArchive();
+      if (_audioDisposed) return;
+      final soundFont = await SoundFontFile.fromFile(archive.path);
+      if (soundFont.presets.isEmpty) {
+        throw StateError('The acoustic piano SoundFont contains no presets.');
+      }
+      final player = soundFont.createPlayer(
+        options: const SoundFontPlayerOptions(
+          joinStereoChannels: true,
+          cacheAudioSources: true,
+          useScheduledPlayback: true,
+          sustain: 1.0,
+          sustainTime: 0.35,
+        ),
+      );
+      final preset = soundFont.presets.first;
+      await player.preloadPreset(preset);
+      if (_audioDisposed) {
+        await player.allNotesOff();
+        return;
+      }
+      _pianoSoundFontPlayer = player;
+      _pianoSoundFontPreset = preset;
+      _pianoSoundFontReady = true;
+      if (mounted) setState(() => feedback = 'Acoustic piano ready · sampled keys loaded.');
+    } catch (error) {
+      if (mounted && !_audioDisposed) {
+        setState(() => feedback = 'Piano samples unavailable. Using the built-in fallback sound.');
+      }
+    } finally {
+      _pianoSoundFontPreparing = false;
+    }
   }
 
   Uint8List _makeTone(int midi, {int durationMs = 420}) {
@@ -416,6 +498,16 @@ class _PianoHomePageState extends State<PianoHomePage> {
 
   Future<void> _playNote(int midi) async {
     if (_audioDisposed) return;
+    final pianoPlayer = _pianoSoundFontPlayer;
+    final pianoPreset = _pianoSoundFontPreset;
+    if (_pianoSoundFontReady && pianoPlayer != null && pianoPreset != null) {
+      try {
+        await pianoPlayer.noteOn(preset: pianoPreset, key: midi, velocity: 100);
+        return;
+      } catch (_) {
+        // Keep the keyboard playable if a sampled voice cannot be started.
+      }
+    }
     final audio = _toneCache.putIfAbsent(midi, () => _makeTone(midi));
     await _playAudio(audio);
   }
@@ -453,14 +545,16 @@ class _PianoHomePageState extends State<PianoHomePage> {
     // platform players. Keep the buffer small but conservative for mid-range
     // Android devices to reduce latency without inviting audio underruns.
     try {
-      await SoLoud.instance.init(
-        sampleRate: 44100,
-        bufferSize: 1024,
-        channels: Channels.stereo,
-        lowLatency: true,
-      );
-      _soloudInitialized = true;
-      SoLoud.instance.setMaxActiveVoiceCount(48);
+      if (!_soloudInitialized) {
+        await SoLoud.instance.init(
+          sampleRate: 44100,
+          bufferSize: 1024,
+          channels: Channels.stereo,
+          lowLatency: true,
+        );
+        _soloudInitialized = true;
+        SoLoud.instance.setMaxActiveVoiceCount(48);
+      }
 
       const files = <String, List<String>>{
         'doum': [
@@ -577,6 +671,11 @@ class _PianoHomePageState extends State<PianoHomePage> {
   }
 
   void _releaseKey(int midi) {
+    if (_pianoSoundFontReady && _pianoSoundFontPlayer != null) {
+      try {
+        unawaited(_pianoSoundFontPlayer.noteOff(midi));
+      } catch (_) {}
+    }
     if (!mounted) return;
     setState(() {
       pressedKeys.remove(midi);
