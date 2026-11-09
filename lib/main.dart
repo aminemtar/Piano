@@ -948,7 +948,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
           Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 340),
-              child: const _DarbukaHeadSurface(),
+              child: _DarbukaHeadSurface(onHit: _playDarbuka),
             ),
           ),
           const SizedBox(height: 10),
@@ -1022,7 +1022,9 @@ class _DarbukaTip extends StatelessWidget {
 }
 
 class _DarbukaHeadSurface extends StatefulWidget {
-  const _DarbukaHeadSurface();
+  final ValueChanged<String> onHit;
+
+  const _DarbukaHeadSurface({required this.onHit});
 
   @override
   State<_DarbukaHeadSurface> createState() => _DarbukaHeadSurfaceState();
@@ -1053,8 +1055,7 @@ class _DarbukaHeadSurfaceState extends State<_DarbukaHeadSurface> {
             _pressed = true;
             _lastZone = zone;
           });
-          final state = context.findAncestorStateOfType<PianoHomePageState>();
-          state?._playDarbuka(zone);
+          widget.onHit(zone);
         },
         onTapUp: (_) => setState(() => _pressed = false),
         onTapCancel: () => setState(() => _pressed = false),
