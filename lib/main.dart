@@ -109,8 +109,9 @@ class _PianoHomePageState extends State<PianoHomePage> {
   final List<Future<void>> _voiceQueues =
       List<Future<void>>.filled(_audioVoiceCount, Future<void>.value());
   final Map<int, Uint8List> _toneCache = {};
-  final Map<String, Future<Source>> _darbukaSampleCache = {};
-  final Map<String, int> _darbukaRoundRobin = {};
+  final Map<String, Future<AudioPool>> _darbukaPools = {};
+  bool _darbukaPreparing = false;
+  bool _darbukaReady = false;
   int _nextVoice = 0;
   bool _audioDisposed = false;
   Timer? _demoTimer;
@@ -169,6 +170,11 @@ class _PianoHomePageState extends State<PianoHomePage> {
       final queuedPlayback = _voiceQueues[index];
       cleanupTasks.add(
         queuedPlayback.catchError((_) {}).then((_) => player.dispose()),
+      );
+    }
+    for (final poolFuture in _darbukaPools.values) {
+      cleanupTasks.add(
+        poolFuture.then((pool) => pool.dispose()).catchError((_) {}),
       );
     }
     unawaited(Future.wait(cleanupTasks).then<void>((_) {}, onError: (Object error, StackTrace stackTrace) {}));
@@ -243,53 +249,78 @@ class _PianoHomePageState extends State<PianoHomePage> {
     await _playAudio(audio);
   }
 
-  Future<Source> _loadDarbukaSample(String filename) async {
+  Future<String> _downloadDarbukaSample(String filename) async {
     final directory = await getTemporaryDirectory();
     final file = File('${directory.path}/piano_darbuka_$filename');
-    if (!await file.exists() || await file.length() == 0) {
-      final client = HttpClient();
-      try {
-        final request = await client.getUrl(Uri.parse(
-          'https://raw.githubusercontent.com/freepats/world-percussion/main/samples/Darbuka/$filename',
-        ));
-        final response = await request.close();
-        if (response.statusCode != HttpStatus.ok) {
-          throw HttpException('Darbuka sample download failed: ${response.statusCode}');
-        }
-        await response.pipe(file.openWrite());
-      } finally {
-        client.close(force: true);
+    if (await file.exists() && await file.length() > 0) return file.path;
+
+    final client = HttpClient();
+    try {
+      final request = await client.getUrl(Uri.parse(
+        'https://raw.githubusercontent.com/freepats/world-percussion/main/samples/Darbuka/$filename',
+      ));
+      final response = await request.close();
+      if (response.statusCode != HttpStatus.ok) {
+        throw HttpException('Darbuka sample download failed: ${response.statusCode}');
       }
+      final sink = file.openWrite();
+      await response.pipe(sink);
+      return file.path;
+    } finally {
+      client.close(force: true);
     }
-    return DeviceFileSource(file.path);
   }
 
-  Future<void> _playDarbuka(String hit) async {
-    const samples = <String, List<String>>{
-      'doum': [
-        'doom_01_01.flac', 'doom_01_04.flac', 'doom_01_07.flac', 'doom_01_10.flac',
-      ],
-      'tek': [
-        'tak_02_01.flac', 'tak_02_03.flac', 'tak_02_05.flac', 'tak_02_07.flac',
-      ],
-      'ka': [
-        'pa_03_01.flac', 'pa_03_03.flac', 'pa_03_05.flac', 'pa_03_07.flac',
-      ],
+  Future<AudioPool> _createDarbukaPool(String filename) async {
+    final path = await _downloadDarbukaSample(filename);
+    return AudioPool.create(
+      source: DeviceFileSource(path),
+      minPlayers: 2,
+      maxPlayers: 4,
+    );
+  }
+
+  Future<void> _prepareDarbukaPools() async {
+    if (_darbukaReady || _darbukaPreparing || _audioDisposed) return;
+    _darbukaPreparing = true;
+    if (mounted) setState(() => feedback = 'Preparing darbuka sounds…');
+    const files = <String, String>{
+      'doum': 'doom_01_01.flac',
+      'tek': 'tak_02_01.flac',
+      'ka': 'pa_03_01.flac',
     };
-    final variants = samples[hit];
-    if (variants == null) return;
-    final index = _darbukaRoundRobin[hit] ?? 0;
-    _darbukaRoundRobin[hit] = (index + 1) % variants.length;
-    final filename = variants[index];
     try {
-      final source = await (_darbukaSampleCache[filename] ??=
-          _loadDarbukaSample(filename));
-      await _playSource(source);
+      await Future.wait(files.entries.map((entry) async {
+        _darbukaPools[entry.key] ??= _createDarbukaPool(entry.value);
+        await _darbukaPools[entry.key]!;
+      }));
+      if (_audioDisposed) return;
+      _darbukaReady = true;
+      if (mounted) setState(() => feedback = 'Darbuka ready — play freely');
     } catch (_) {
+      _darbukaPools.clear();
       if (mounted && !_audioDisposed) {
-        setState(() => feedback = 'Connect to the internet once to load the darbuka sounds.');
+        setState(() => feedback = 'Could not load darbuka sounds. Check your connection and reopen this tab.');
       }
+    } finally {
+      _darbukaPreparing = false;
     }
+  }
+
+  void _playDarbuka(String hit) {
+    if (_audioDisposed) return;
+    final poolFuture = _darbukaPools[hit];
+    if (poolFuture == null) {
+      unawaited(_prepareDarbukaPools());
+      return;
+    }
+    unawaited(poolFuture.then((pool) async {
+      if (!_audioDisposed) await pool.start();
+    }).catchError((_) {
+      if (mounted && !_audioDisposed) {
+        setState(() => feedback = 'Darbuka audio is not ready. Check your connection.');
+      }
+    }));
   }
 
   void _pressKey(int midi) {
@@ -892,7 +923,10 @@ class _PianoHomePageState extends State<PianoHomePage> {
   Widget _navItem(IconData icon, String label, int index) {
     final selected = selectedTab == index;
     return Expanded(child: GestureDetector(
-      onTap: () => setState(() => selectedTab = index),
+      onTap: () {
+        setState(() => selectedTab = index);
+        if (index == 3) unawaited(_prepareDarbukaPools());
+      },
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, color: selected ? cobalt : const Color(0xFF9AA4B6), size: 21),
         const SizedBox(height: 3),
