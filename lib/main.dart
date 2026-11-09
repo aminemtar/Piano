@@ -249,6 +249,7 @@ class PianoHomePage extends StatefulWidget {
 
 class _PianoHomePageState extends State<PianoHomePage> {
   int selectedTab = 0;
+  String _selectedInstrument = 'piano';
   int _darbukaLessonIndex = 0;
   int _darbukaLessonStep = 0;
   int _darbukaLessonCompleted = 0;
@@ -744,17 +745,98 @@ class _PianoHomePageState extends State<PianoHomePage> {
         child: Column(
           children: [
             _topBar(),
+            if (selectedTab == 0) _instrumentSwitcher(),
             Expanded(
               child: switch (selectedTab) {
-                0 => _learnPage(),
+                0 => _selectedInstrument == 'piano'
+                    ? _learnPage()
+                    : _darbukaLearningPage(),
                 1 => _libraryPage(),
-                2 => _progressPage(),
-                3 => _darbukaPage(),
-                _ => _darbukaLearningPage(),
+                _ => _progressPage(),
               },
             ),
             _bottomNav(),
           ],
+        ),
+      ),
+    );
+  }
+
+
+  Widget _instrumentSwitcher() => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+        child: Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEFF3FC),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(children: [
+            _instrumentChoice(
+              label: 'Piano',
+              icon: Icons.piano_rounded,
+              value: 'piano',
+            ),
+            _instrumentChoice(
+              label: 'Darbuka',
+              icon: Icons.album_rounded,
+              value: 'darbuka',
+            ),
+          ]),
+        ),
+      );
+
+  Widget _instrumentChoice({
+    required String label,
+    required IconData icon,
+    required String value,
+  }) {
+    final selected = _selectedInstrument == value;
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          if (_selectedInstrument == value) return;
+          _stopDarbukaDemo();
+          if (value == 'piano') {
+            _darbukaMetronomeTimer?.cancel();
+            _darbukaMetronomeOn = false;
+          }
+          setState(() => _selectedInstrument = value);
+          if (value == 'darbuka') unawaited(_prepareDarbukaPools());
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
+          decoration: BoxDecoration(
+            color: selected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: selected
+                ? const [
+                    BoxShadow(
+                      color: Color(0x140D2454),
+                      blurRadius: 9,
+                      offset: Offset(0, 2),
+                    )
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 18, color: selected ? cobalt : const Color(0xFF8994AA)),
+              const SizedBox(width: 7),
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? navy : const Color(0xFF8994AA),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1467,8 +1549,6 @@ class _PianoHomePageState extends State<PianoHomePage> {
           _navItem(Icons.home_rounded, 'Learn', 0),
           _navItem(Icons.library_music_rounded, 'Songs', 1),
           _navItem(Icons.insights_rounded, 'Progress', 2),
-          _navItem(Icons.album_rounded, 'Darbuka', 3),
-          _navItem(Icons.school_rounded, 'Lessons', 4),
         ]),
       );
 
@@ -1967,7 +2047,6 @@ class _PianoHomePageState extends State<PianoHomePage> {
         child: GestureDetector(
       onTap: () {
         setState(() => selectedTab = index);
-        if (index == 3 || index == 4) unawaited(_prepareDarbukaPools());
       },
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon,
