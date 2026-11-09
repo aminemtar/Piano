@@ -199,6 +199,47 @@ const songs = [
   ]),
 ];
 
+
+class DarbukaLesson {
+  final String title;
+  final String subtitle;
+  final String technique;
+  final String tip;
+  final List<String> pattern;
+
+  const DarbukaLesson({
+    required this.title,
+    required this.subtitle,
+    required this.technique,
+    required this.tip,
+    required this.pattern,
+  });
+}
+
+const darbukaLessons = <DarbukaLesson>[
+  DarbukaLesson(
+    title: 'Meet the three sounds',
+    subtitle: 'Beginner · 3 strikes',
+    technique: 'Learn to hear and feel DOUM, TEK and KA.',
+    tip: 'Use a relaxed hand. Keep your wrist loose and let each finger rebound naturally.',
+    pattern: ['doum', 'tek', 'ka'],
+  ),
+  DarbukaLesson(
+    title: 'Your first Maqsum',
+    subtitle: 'Beginner · 8 beats',
+    technique: 'A foundational 4/4 groove used in many Arabic and Middle Eastern rhythms.',
+    tip: 'Count “1 & 2 & 3 & 4 &”. Keep the spacing even; make the DOUM beats feel grounded.',
+    pattern: ['doum', 'tek', 'ka', 'tek', 'doum', 'tek', 'ka', 'tek'],
+  ),
+  DarbukaLesson(
+    title: 'Baladi groove',
+    subtitle: 'Beginner+ · 8 beats',
+    technique: 'Build a stronger groove by adding a second bass hit at the beginning.',
+    tip: 'Keep the two opening DOUM strikes steady, then make the edge notes light and crisp.',
+    pattern: ['doum', 'doum', 'tek', 'ka', 'doum', 'tek', 'ka', 'tek'],
+  ),
+];
+
 class PianoHomePage extends StatefulWidget {
   const PianoHomePage({super.key});
 
@@ -208,6 +249,9 @@ class PianoHomePage extends StatefulWidget {
 
 class _PianoHomePageState extends State<PianoHomePage> {
   int selectedTab = 0;
+  int _darbukaLessonIndex = 0;
+  int _darbukaLessonStep = 0;
+  int _darbukaLessonCompleted = 0;
   int songIndex = 0;
   int activeMidi = -1;
   final Set<int> pressedKeys = {};
@@ -697,7 +741,8 @@ class _PianoHomePageState extends State<PianoHomePage> {
                 0 => _learnPage(),
                 1 => _libraryPage(),
                 2 => _progressPage(),
-                _ => _darbukaPage(),
+                3 => _darbukaPage(),
+                _ => _darbukaLearningPage(),
               },
             ),
             _bottomNav(),
@@ -1415,6 +1460,7 @@ class _PianoHomePageState extends State<PianoHomePage> {
           _navItem(Icons.library_music_rounded, 'Songs', 1),
           _navItem(Icons.insights_rounded, 'Progress', 2),
           _navItem(Icons.album_rounded, 'Darbuka', 3),
+          _navItem(Icons.school_rounded, 'Lessons', 4),
         ]),
       );
 
@@ -1547,13 +1593,232 @@ class _PianoHomePageState extends State<PianoHomePage> {
         ],
       );
 
+
+  void _selectDarbukaLesson(int index) {
+    setState(() {
+      _darbukaLessonIndex = index;
+      _darbukaLessonStep = 0;
+    });
+  }
+
+  void _handleDarbukaLessonHit(String hit) {
+    _playDarbuka(hit);
+    final lesson = darbukaLessons[_darbukaLessonIndex];
+    if (_darbukaLessonStep >= lesson.pattern.length) return;
+
+    final expected = lesson.pattern[_darbukaLessonStep];
+    setState(() {
+      if (hit == expected) {
+        _darbukaLessonStep++;
+        if (_darbukaLessonStep == lesson.pattern.length) {
+          _darbukaLessonCompleted = math.max(
+            _darbukaLessonCompleted,
+            _darbukaLessonIndex + 1,
+          );
+          feedback = 'Lesson complete! Great rhythm.';
+        } else {
+          feedback = 'Good strike — keep the rhythm going.';
+        }
+      } else {
+        feedback = 'Try again: listen for the ${expected.toUpperCase()} sound.';
+      }
+    });
+  }
+
+  Widget _darbukaLearningPage() {
+    final lesson = darbukaLessons[_darbukaLessonIndex];
+    final complete = _darbukaLessonStep >= lesson.pattern.length;
+    final nextHit = complete ? null : lesson.pattern[_darbukaLessonStep];
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      children: [
+        const Text('Darbuka lessons', style: TextStyle(
+          fontSize: 27, fontWeight: FontWeight.w900, color: navy, letterSpacing: -.7,
+        )),
+        const SizedBox(height: 5),
+        const Text('Learn the sounds, then play real rhythm patterns.',
+          style: TextStyle(fontSize: 12, color: Color(0xFF8994AA))),
+        const SizedBox(height: 16),
+        Row(children: [
+          Expanded(child: _lessonStat('$_darbukaLessonCompleted / ${darbukaLessons.length}', 'Lessons completed')),
+          const SizedBox(width: 10),
+          Expanded(child: _lessonStat('${_darbukaLessonStep.clamp(0, lesson.pattern.length)} / ${lesson.pattern.length}', 'Strikes in this lesson')),
+        ]),
+        const SizedBox(height: 16),
+        const Text('YOUR LEARNING PATH', style: TextStyle(
+          color: Color(0xFF8994AA), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.2,
+        )),
+        const SizedBox(height: 9),
+        ...List.generate(darbukaLessons.length, (index) {
+          final item = darbukaLessons[index];
+          final selected = index == _darbukaLessonIndex;
+          final unlocked = index == 0 || _darbukaLessonCompleted >= index;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(15),
+              onTap: unlocked ? () => _selectDarbukaLesson(index) : null,
+              child: Container(
+                padding: const EdgeInsets.all(13),
+                decoration: BoxDecoration(
+                  color: selected ? const Color(0xFFEAF0FF) : Colors.white,
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(color: selected ? cobalt : const Color(0xFFE8EDF7)),
+                ),
+                child: Row(children: [
+                  Container(
+                    width: 34, height: 34,
+                    decoration: BoxDecoration(
+                      color: unlocked ? cobalt.withValues(alpha: .10) : const Color(0xFFF0F2F7),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      _darbukaLessonCompleted > index ? Icons.check_rounded
+                        : unlocked ? Icons.play_arrow_rounded : Icons.lock_rounded,
+                      color: unlocked ? cobalt : const Color(0xFF9AA4B6), size: 19,
+                    ),
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(item.title, style: const TextStyle(color: navy, fontSize: 12, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 3),
+                    Text(item.subtitle, style: const TextStyle(color: Color(0xFF8994AA), fontSize: 10)),
+                  ])),
+                  if (selected) const Icon(Icons.radio_button_checked_rounded, color: cobalt, size: 18),
+                ]),
+              ),
+            ),
+          );
+        }),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white, borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE8EDF7)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('LESSON ${_darbukaLessonIndex + 1}', style: const TextStyle(
+              color: cobalt, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.2,
+            )),
+            const SizedBox(height: 5),
+            Text(lesson.title, style: const TextStyle(color: navy, fontSize: 19, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 5),
+            Text(lesson.technique, style: const TextStyle(color: Color(0xFF65718A), fontSize: 11, height: 1.45)),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(11),
+              decoration: BoxDecoration(color: const Color(0xFFF4F7FF), borderRadius: BorderRadius.circular(12)),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.lightbulb_outline_rounded, color: cobalt, size: 17),
+                const SizedBox(width: 8),
+                Expanded(child: Text(lesson.tip, style: const TextStyle(color: Color(0xFF465574), fontSize: 10, height: 1.45))),
+              ]),
+            ),
+            const SizedBox(height: 14),
+            const Text('FOLLOW THE STRIKE PATTERN', style: TextStyle(
+              color: Color(0xFF8994AA), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: .9,
+            )),
+            const SizedBox(height: 9),
+            Wrap(spacing: 6, runSpacing: 7, children: List.generate(lesson.pattern.length, (index) {
+              final hit = lesson.pattern[index];
+              final passed = index < _darbukaLessonStep;
+              final current = index == _darbukaLessonStep && !complete;
+              final label = hit.toUpperCase();
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: passed ? const Color(0xFFE1F7EF) : current ? cobalt : const Color(0xFFF0F3FA),
+                  borderRadius: BorderRadius.circular(9),
+                  border: Border.all(color: current ? cobalt : Colors.transparent),
+                ),
+                child: Text(label, style: TextStyle(
+                  color: passed ? const Color(0xFF167A59) : current ? Colors.white : const Color(0xFF69758D),
+                  fontSize: 10, fontWeight: FontWeight.w900,
+                )),
+              );
+            })),
+            const SizedBox(height: 12),
+            Row(children: [
+              Icon(complete ? Icons.celebration_rounded : Icons.touch_app_rounded,
+                color: complete ? const Color(0xFF20A879) : cobalt, size: 17),
+              const SizedBox(width: 7),
+              Expanded(child: Text(
+                complete ? 'Pattern mastered! Select the next lesson when you are ready.'
+                  : 'Next strike: ${nextHit!.toUpperCase()}',
+                style: TextStyle(color: complete ? const Color(0xFF167A59) : navy, fontSize: 11, fontWeight: FontWeight.w900),
+              )),
+              TextButton(
+                onPressed: () => setState(() => _darbukaLessonStep = 0),
+                child: const Text('Restart'),
+              ),
+            ]),
+          ]),
+        ),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(colors: [Color(0xFF17264A), Color(0xFF263E70)]),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(children: [
+            Row(children: [
+              const Icon(Icons.sports_handball_rounded, color: cyan, size: 17),
+              const SizedBox(width: 8),
+              const Text('PRACTICE ON THE DRUM', style: TextStyle(
+                color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1,
+              )),
+              const Spacer(),
+              Text(_darbukaReady ? 'READY' : 'LOADING',
+                style: const TextStyle(color: cyan, fontSize: 9, fontWeight: FontWeight.w900)),
+            ]),
+            const SizedBox(height: 10),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 300),
+              child: _DarbukaHeadSurface(onHit: _handleDarbukaLessonHit),
+            ),
+            const SizedBox(height: 8),
+            const Text('Tap the center for DOUM · left edge for TEK · right edge for KA',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70, fontSize: 9, height: 1.4)),
+            if (!_darbukaReady) const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text('The recorded drum sounds are still loading.',
+                style: TextStyle(color: Color(0xFFFFD18A), fontSize: 9)),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 10),
+        if (complete) FilledButton.icon(
+          onPressed: _darbukaLessonIndex < darbukaLessons.length - 1
+            ? () => _selectDarbukaLesson(_darbukaLessonIndex + 1) : null,
+          icon: const Icon(Icons.arrow_forward_rounded),
+          label: const Text('Continue to next lesson'),
+        ),
+      ],
+    );
+  }
+
+  Widget _lessonStat(String value, String label) => Container(
+    padding: const EdgeInsets.all(13),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15),
+      border: Border.all(color: const Color(0xFFE8EDF7))),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(value, style: const TextStyle(color: navy, fontSize: 18, fontWeight: FontWeight.w900)),
+      const SizedBox(height: 3),
+      Text(label, style: const TextStyle(color: Color(0xFF8994AA), fontSize: 9)),
+    ]),
+  );
+
   Widget _navItem(IconData icon, String label, int index) {
     final selected = selectedTab == index;
     return Expanded(
         child: GestureDetector(
       onTap: () {
         setState(() => selectedTab = index);
-        if (index == 3) unawaited(_prepareDarbukaPools());
+        if (index == 3 || index == 4) unawaited(_prepareDarbukaPools());
       },
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon,
