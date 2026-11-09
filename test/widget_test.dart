@@ -43,4 +43,19 @@ void main() {
     expect(noteLabel(83), 'B5');
   });
 
+  testWidgets('opens the playable darbuka instrument', (tester) async {
+    await tester.pumpWidget(const PianoLearnApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Darbuka'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('PERCUSSION STUDIO'), findsOneWidget);
+    expect(find.text('DOUM'), findsOneWidget);
+    expect(find.text('TEK'), findsOneWidget);
+    expect(find.text('KA'), findsOneWidget);
+    expect(find.text('Darbuka basics'), findsOneWidget);
+  });
+
+
 }
